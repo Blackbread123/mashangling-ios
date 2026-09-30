@@ -29,7 +29,42 @@ xcodegen generate
 open Mashangling.xcodeproj
 ```
 
-要求：Xcode 15+，iOS 16.0+。CI（GitHub Actions · macos-15）会在每次 push 时自动编译验证。
+要求：Xcode 15+，iOS 16.0+。CI（GitHub Actions · macos-15）会在每次 push 时自动编译验证，
+并打出未签名的 `Mashangling.ipa` 发布到仓库 [Releases](../../releases)（tag 形如 `build-N`）。
+
+## 安装到 iPhone（自签 ipa）
+
+CI 产物是**未签名** ipa，直接装不上真机，需要先用你的 Apple ID 重签名。任选一种：
+
+### 方法一：Sideloadly（Windows / macOS，最简单）
+
+1. 电脑安装 [Sideloadly](https://sideloadly.io) 和 iTunes（非 Microsoft Store 版）。
+2. iPhone 用数据线连电脑，解锁并点「信任此电脑」。
+3. 把 Releases 里下载的 `Mashangling.ipa` 拖进 Sideloadly。
+4. 填入你的 Apple ID 邮箱，点 Start；按提示输入密码（开了双重认证会弹验证码）。
+5. 装完后在 iPhone 上进入
+   「设置 → 通用 → VPN与设备管理 → 你的 Apple ID → 信任」。
+6. 免费证书 7 天到期，到期后重新执行第 3～5 步即可（数据保留）。
+
+### 方法二：AltStore / SideStore（装好后可在手机上续签）
+
+1. 按 [AltStore 官网](https://altstore.io) 指引在电脑装 AltServer，给手机装 AltStore。
+2. 把 `Mashangling.ipa` 传到手机（iCloud 云盘 / AirDrop / 微信文件均可）。
+3. 在 AltStore 的「My Apps」页点左上角 `+`，选择这个 ipa 安装。
+4. 免费证书同样是 7 天，但只要 AltStore 与电脑在同一 Wi-Fi，它会自动续签。
+
+### 方法三：自己有 Apple 开发者账号（付费 $99/年）
+
+直接在本仓库执行 `xcodegen generate` 后用 Xcode 打开，
+在 Signing & Capabilities 里选自己的 Team，连真机 Run 即可。
+付费证书签名一次管 1 年，且无需 7 天续签。
+
+### 常见问题
+
+- **「不受信任的开发者」**：去「设置 → 通用 → VPN与设备管理」里信任你的证书。
+- **Sideloadly 报「maximum number of apps」**：免费 Apple ID 同时只能侧载 3 个 App，
+  先删掉一个不用的，或等 7 天名额释放。
+- **App 打开闪退/无法验证**：证书过期了，重新签名安装即可。
 
 ## 技术栈
 
