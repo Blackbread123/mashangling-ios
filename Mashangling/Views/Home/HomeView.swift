@@ -21,7 +21,7 @@ struct HomeView: View {
                     // 心选橱窗 / 我的农场 入口
                     HStack(spacing: 10) {
                         NavigationLink(destination: HeartShowcaseView()) {
-                            entryCard(icon: "gem", title: "心选橱窗", badge: nil)
+                            entryCard(icon: "diamond.fill", title: "心选橱窗", badge: nil)
                         }
                         .buttonStyle(.plain)
 

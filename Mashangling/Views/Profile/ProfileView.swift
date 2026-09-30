@@ -29,6 +29,9 @@ struct ProfileView: View {
                 }
 
                 if isMe {
+                    // 数据看板 + 卡片广场数据（仅本人可见，对应网页 StatsDashboard / CardStatsPanel）
+                    StatsDashboardView()
+                    CardStatsPanelView()
                     myShortcuts
                 }
 

@@ -35,7 +35,9 @@ struct MainTabView: View {
                 .badge(unreadManager.totalUnread)
                 .tag(3)
 
-            ProfileView(userId: authManager.currentUser?.id ?? 0)
+            NavigationStack {
+                ProfileView(userId: authManager.currentUser?.id ?? 0)
+            }
                 .tabItem {
                     Label("我的", systemImage: "person.fill")
                 }

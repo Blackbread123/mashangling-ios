@@ -12,6 +12,7 @@ struct FeedView: View {
     @EnvironmentObject var authManager: AuthManager
     @StateObject private var vm = FeedViewModel()
     @State private var showLogin = false
+    @State private var openDetailId: Int? = nil
 
     private let columns = [
         GridItem(.flexible(), spacing: 12),
@@ -31,14 +32,12 @@ struct FeedView: View {
             } else {
                 LazyVGrid(columns: columns, spacing: 12) {
                     ForEach(Array(vm.items.enumerated()), id: \.element.id) { idx, item in
-                        NavigationLink(destination: ShowcaseDetailView(showcaseId: item.id)) {
-                            ShowcaseCardView(
-                                item: item,
-                                rank: vm.sort == "hot" && (search ?? "").isEmpty && idx < 2 ? idx + 1 : nil,
-                                onLike: { Task { await vm.toggleLike(item: item, authed: authManager.isAuthenticated, needLogin: { showLogin = true }) } }
-                            )
-                        }
-                        .buttonStyle(.plain)
+                        ShowcaseCardView(
+                            item: item,
+                            rank: vm.sort == "hot" && (search ?? "").isEmpty && idx < 2 ? idx + 1 : nil,
+                            onLike: { Task { await vm.toggleLike(item: item, authed: authManager.isAuthenticated, needLogin: { showLogin = true }) } }
+                        )
+                        .onTapGesture { openDetailId = item.id }
                     }
                 }
 
@@ -64,6 +63,14 @@ struct FeedView: View {
         }
         .onAppear { vm.configure(tagId: tagId, search: search, includeTagIds: includeTagIds, excludeTagIds: excludeTagIds, showPlatformToggle: showPlatformToggle) }
         .sheet(isPresented: $showLogin) { LoginView() }
+        .navigationDestination(isPresented: Binding(
+            get: { openDetailId != nil },
+            set: { if !$0 { openDetailId = nil } }
+        )) {
+            if let id = openDetailId {
+                ShowcaseDetailView(showcaseId: id)
+            }
+        }
     }
 
     // MARK: 排序栏

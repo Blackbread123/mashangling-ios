@@ -11,11 +11,10 @@ struct ShowcaseCardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // 封面 + 角标
+            // 封面 + 角标（网页为 4:3 object-cover：容器定比例，图片填充裁切）
             ZStack(alignment: .topTrailing) {
                 AppImage(path: item.coverImage)
-                    .aspectRatio(1, contentMode: .fill)
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .clipped()
 
                 // 右上角平台标签
@@ -55,6 +54,10 @@ struct ShowcaseCardView: View {
                 .padding(6)
                 .frame(maxHeight: .infinity, alignment: .top)
             }
+            .background(Color.appSecondary)
+            .aspectRatio(4.0 / 3.0, contentMode: .fit)
+            .frame(maxWidth: .infinity)
+            .clipped()
 
             // 信息区
             VStack(alignment: .leading, spacing: 6) {

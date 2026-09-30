@@ -111,10 +111,9 @@ struct ShowcaseDetailView: View {
     private func content(_ d: ShowcaseDetailData) -> some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 14) {
-                // 封面
+                // 封面（网页：w-full object-cover，自然比例，高度随图）
                 ZStack(alignment: .topLeading) {
-                    AppImage(path: d.coverImage)
-                        .aspectRatio(1, contentMode: .fit)
+                    AppImage(path: d.coverImage, contentMode: .fit)
                         .frame(maxWidth: .infinity)
                         .background(Color.appSecondary)
                         .cornerRadius(12)

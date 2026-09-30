@@ -15,8 +15,9 @@ struct SearchView: View {
     @EnvironmentObject var authManager: AuthManager
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
                 // 搜索框
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
@@ -212,6 +213,7 @@ struct SearchView: View {
             if let pid = openPostId {
                 CardDetailSheet(postId: pid) { }
             }
+        }
         }
     }
 
