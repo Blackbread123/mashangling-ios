@@ -261,7 +261,7 @@ struct CardStatsPanelView: View {
     @State private var trend: StatsTrend? = nil
     @State private var period = "week"
     @State private var hidden: Set<String> = []
-    @State private var openedPostId: Int? = nil
+    @State private var openedPostId: IdentifiedInt? = nil
 
     private let periods: [(key: String, label: String)] = [
         ("week", "本周"), ("month", "本月"), ("year", "今年"),
@@ -396,38 +396,43 @@ struct CardStatsPanelView: View {
     private func topGrid(_ d: StatsDashboardData) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(metrics) { m in
-                let items = cardTopItems(of: m.key, d)
-                if !items.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("\(periods.first { $0.key == period }?.label ?? "本周")\(m.label)最多的卡片")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(.appMutedFg)
-                        ForEach(Array(items.prefix(2).enumerated()), id: \.element.id) { i, t in
-                            Button { openedPostId = IdentifiedInt(t.postId) } label: {
-                                HStack(spacing: 8) {
-                                    Text("\(i + 1)")
-                                        .font(.system(size: 9, weight: .bold))
-                                        .foregroundColor(Color(h: 38, s: 92, l: 40))
-                                        .frame(width: 18, height: 18)
-                                        .background(Color(h: 45, s: 95, l: 51).opacity(0.15))
-                                        .cornerRadius(9)
-                                    Text(t.title)
-                                        .font(.system(size: 12))
-                                        .foregroundColor(.appForeground)
-                                        .lineLimit(1)
-                                    Spacer(minLength: 0)
-                                    Text("\(t.count)")
-                                        .font(.system(size: 11, weight: .semibold))
-                                        .foregroundColor(.appMutedFg)
-                                }
-                            }
-                            .buttonStyle(.plain)
+                topCard(for: m, d)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func topCard(for m: CMetric, _ d: StatsDashboardData) -> some View {
+        let items = cardTopItems(of: m.key, d)
+        if !items.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("\(periods.first { $0.key == period }?.label ?? "本周")\(m.label)最多的卡片")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.appMutedFg)
+                ForEach(Array(items.prefix(2).enumerated()), id: \.element.id) { i, t in
+                    Button { openedPostId = IdentifiedInt(t.postId) } label: {
+                        HStack(spacing: 8) {
+                            Text("\(i + 1)")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundColor(Color(h: 38, s: 92, l: 40))
+                                .frame(width: 18, height: 18)
+                                .background(Color(h: 45, s: 95, l: 51).opacity(0.15))
+                                .cornerRadius(9)
+                            Text(t.title)
+                                .font(.system(size: 12))
+                                .foregroundColor(.appForeground)
+                                .lineLimit(1)
+                            Spacer(minLength: 0)
+                            Text("\(t.count)")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.appMutedFg)
                         }
                     }
-                    .padding(.horizontal, 12).padding(.vertical, 10)
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.appBorder, lineWidth: 0.5))
+                    .buttonStyle(.plain)
                 }
             }
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.appBorder, lineWidth: 0.5))
         }
     }
 
