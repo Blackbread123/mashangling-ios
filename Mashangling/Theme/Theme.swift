@@ -74,12 +74,15 @@ final class SiteThemeManager: ObservableObject {
         guard Self.themes.contains(where: { $0.key == key }) else { return }
         theme = key
         UserDefaults.standard.set(key, forKey: "msl-site-theme")
-        if AuthManager.shared.isAuthenticated {
-            Task { _ = try? await MashanglingAPI.shared.settings.updateSiteTheme(key) }
+        Task { @MainActor in
+            if AuthManager.shared.isAuthenticated {
+                _ = try? await MashanglingAPI.shared.settings.updateSiteTheme(key)
+            }
         }
     }
 
     /// 登录后从账号拉取主题
+    @MainActor
     func syncFromServer() async {
         guard AuthManager.shared.isAuthenticated else { return }
         if let r = try? await MashanglingAPI.shared.settings.getSiteTheme(),
@@ -171,6 +174,11 @@ struct AppTheme {
         static let skyBg       = Color(h: 195, s: 16, l: 21)
         static let skyBrd      = Color(h: 195, s: 15, l: 21)
         static let redFg       = Color(h: 0,   s: 62, l: 60)
+        // 深色下品牌色（对应浅色 brand50/100/400/600 的深色映射）
+        static let brand900    = Color(h: 240, s: 4,  l: 16)
+        static let brand700    = Color(h: 240, s: 4,  l: 28)
+        static let brand400    = Color(h: 240, s: 3,  l: 58)
+        static let brand300    = Color(h: 240, s: 3,  l: 70)
     }
 
     // MARK: 浅色主题调色板（对应 index.css 的 [data-theme] 变量）
