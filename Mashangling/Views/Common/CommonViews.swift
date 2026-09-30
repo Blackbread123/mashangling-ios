@@ -127,6 +127,9 @@ class ToastCenter: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.2, execute: item)
     }
 
+    func success(_ msg: String) { show(msg) }
+    func error(_ msg: String) { show(msg, error: true) }
+
     static func success(_ msg: String) { shared.show(msg) }
     static func error(_ msg: String) { shared.show(msg, error: true) }
 }
