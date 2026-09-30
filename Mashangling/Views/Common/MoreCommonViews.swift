@@ -74,13 +74,10 @@ struct LevelBadgeView: View {
     let level: Int
 
     var body: some View {
-        Text("Lv.\(level) \(Levels.band(of: level))")
-            .font(.system(size: 9, weight: .medium))
-            .foregroundColor(.appPrimary)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(Color.appPrimary.opacity(0.1))
-            .cornerRadius(6)
+        // 网页 LevelBadge：纯文字 Lv.N，天蓝色加粗，无底色无段位名
+        Text("Lv.\(max(1, level))")
+            .font(.system(size: 12, weight: .bold))
+            .foregroundColor(Color(hex: "#0284c7"))
     }
 }
 

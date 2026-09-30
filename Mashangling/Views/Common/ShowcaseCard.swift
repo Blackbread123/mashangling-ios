@@ -1,132 +1,257 @@
 import SwiftUI
 
-// MARK: - 橱窗卡片（对应网页 ShowcaseCard.tsx，feed 两列网格）
+// MARK: - 橱窗卡片（逐行复刻网页 ShowcaseCard.tsx）
+// 结构：封面（4:3，圆角 12，带边框）+ 下方信息区（无卡片底，直接落在页面背景上）
 struct ShowcaseCardView: View {
     let item: Showcase
-    var rank: Int? = nil            // 热门榜名次（1/2 显示金银皇冠）
-    var isOwner: Bool = false       // 是否本人（显示余量角标）
+    var rank: Int? = nil            // 热门榜名次（1 金冠 2 银冠）
+    var isOwner: Bool = false       // 本人（显示余量角标 剩x/共y）
     var onLike: (() -> Void)? = nil
 
     private var liked: Bool { item.likedByMe ?? false }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // 封面 + 角标（网页为 4:3 object-cover）
-            // 尺寸由 Color 容器决定（无固有尺寸，比例永远锁定 4:3），图片只在 overlay 里填充裁切
-            Color.appSecondary
-                .aspectRatio(4.0 / 3.0, contentMode: .fit)
-                .overlay(
-                    ZStack(alignment: .topTrailing) {
-                        AppImage(path: item.coverImage)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .clipped()
-
-                        // 右上角平台标签
-                        MiniBadge(text: PlatformLabel.of(item.platform),
-                                  fg: .white, bg: Color.black.opacity(0.55))
-                            .padding(6)
-
-                        // 左上角徽章列
-                        VStack(alignment: .leading, spacing: 4) {
-                            if let rank = rank, rank <= 2 {
-                                Text(rank == 1 ? "👑 NO.1" : "🥈 NO.2")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 6).padding(.vertical, 2)
-                                    .background(rank == 1 ? Color(h: 45, s: 90, l: 45) : Color.gray)
-                                    .cornerRadius(6)
-                            }
-                            if item.pinned == true {
-                                MiniBadge(text: "置顶", fg: .appPrimaryFg, bg: .appPrimary)
-                            }
-                            if let txt = stockBadgeText {
-                                MiniBadge(text: txt.text, fg: txt.fg, bg: txt.bg)
-                            }
-                            if let eb = item.expiresBadgeText {
-                                MiniBadge(text: eb,
-                                          fg: item.isExpired ? .white : .appAmberFg,
-                                          bg: item.isExpired ? .appDestructive : .appAmberBg)
-                            }
-                            if let pc = item.pointCost, pc > 0 {
-                                MiniBadge(text: "\(pc) 积分", fg: .appAmberFg, bg: .appAmberBg)
-                            }
-                            if let cc = item.codeCount, cc > 0 {
-                                MiniBadge(text: "补码×\(cc)", fg: .appEmeraldFg, bg: .appEmeraldBg)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(6)
-                        .frame(maxHeight: .infinity, alignment: .top)
-                    }
-                    .clipped()
-                )
-                .clipped()
-
-            // 信息区
-            VStack(alignment: .leading, spacing: 6) {
-                Text(item.title)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(.appForeground)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-
-                // 作者
-                HStack(spacing: 5) {
-                    AvatarView(path: item.author?.avatar, name: item.author?.name ?? "", size: 16)
-                    Text(item.author?.name ?? "")
-                        .font(.system(size: 11))
-                        .foregroundColor(.appMutedFg)
-                        .lineLimit(1)
-                    if let t = item.author?.equippedTitle, !t.isEmpty {
-                        Text(t).font(.system(size: 10)).foregroundColor(.appAmberFg).lineLimit(1)
-                    }
-                }
-
-                // 互动行
-                HStack(spacing: 12) {
-                    Button { onLike?() } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: liked ? "heart.fill" : "heart")
-                                .font(.system(size: 12))
-                                .foregroundColor(liked ? .appRedFg : .appMutedFg)
-                            Text("\(item.likeCount ?? 0)")
-                                .font(.system(size: 11))
-                                .foregroundColor(.appMutedFg)
-                        }
-                    }
-                    .buttonStyle(.plain)
-
-                    HStack(spacing: 3) {
-                        Image(systemName: "checkmark.circle")
-                            .font(.system(size: 12))
-                            .foregroundColor(.appMutedFg)
-                        Text("\(item.claimCount ?? 0) 人领到")
-                            .font(.system(size: 11))
-                            .foregroundColor(.appMutedFg)
-                    }
-                    Spacer(minLength: 0)
-                }
-            }
-            .padding(10)
+            cover
+            infoArea
         }
-        .background(Color.appCard)
-        .cornerRadius(12)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.appBorder, lineWidth: 0.5))
         .contentShape(Rectangle())
     }
 
-    /// 库存角标
-    private var stockBadgeText: (text: String, fg: Color, bg: Color)? {
-        if isOwner, let r = item.remaining, let q = item.quantity {
-            return ("剩 \(r)/\(q)", .appSkyBrd, .appSkyBg)
+    // MARK: 封面 + 全部角标（位置与配色与网页一致）
+    private var cover: some View {
+        Color.appSecondary
+            .aspectRatio(4.0 / 3.0, contentMode: .fit)
+            .overlay(
+                ZStack {
+                    AppImage(path: item.coverImage)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .clipped()
+
+                    // 右上：平台标（白底 85%）
+                    VStack {
+                        HStack {
+                            Spacer()
+                            Text(PlatformLabel.of(item.platform))
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(Color.appForeground.opacity(0.8))
+                                .padding(.horizontal, 8).padding(.vertical, 2)
+                                .background(Color.white.opacity(0.85))
+                                .cornerRadius(10)
+                        }
+                        Spacer()
+                    }
+                    .padding(8)
+
+                    // 左上：金冠 / 银冠 / 置顶
+                    VStack {
+                        HStack {
+                            if let rank = rank, rank == 1 {
+                                rankBadge(text: "NO.1", colors: ["#f9e29c", "#f0c64f", "#d99e2b"], fg: Color(h: 38, s: 92, l: 25))
+                            } else if let rank = rank, rank == 2 {
+                                rankBadge(text: "NO.2", colors: ["#f8fafc", "#dbe2ea", "#a8b6c6"], fg: Color(h: 215, s: 16, l: 35))
+                            } else if item.pinned == true {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "pin.fill").font(.system(size: 9))
+                                    Text("置顶").font(.system(size: 11))
+                                }
+                                .foregroundColor(.appPrimaryFg)
+                                .padding(.horizontal, 8).padding(.vertical, 2)
+                                .background(Color.appForeground.opacity(0.8))
+                                .cornerRadius(10)
+                            }
+                            Spacer()
+                        }
+                        Spacer()
+                    }
+                    .padding(8)
+
+                    // 右上（平台标下方）：本人余量 剩/共 或 「补」
+                    VStack {
+                        HStack {
+                            Spacer()
+                            VStack(alignment: .trailing, spacing: 4) {
+                                Spacer().frame(height: 22) // 避开平台标
+                                if isOwner, let r = item.remaining, let q = item.quantity {
+                                    Text("\(r)/\(q)")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .monospacedDigit()
+                                        .foregroundColor(r == 0 ? .white : .appForeground)
+                                        .padding(.horizontal, 8).padding(.vertical, 2)
+                                        .background(r == 0 ? Color(h: 240, s: 4, l: 30).opacity(0.9) : Color.white.opacity(0.9))
+                                        .cornerRadius(10)
+                                }
+                                if let cc = item.codeCount, cc > 0 {
+                                    Text("补")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundColor(.appPrimaryFg)
+                                        .padding(.horizontal, 8).padding(.vertical, 2)
+                                        .background(Color.appPrimary)
+                                        .cornerRadius(10)
+                                }
+                            }
+                        }
+                        Spacer()
+                    }
+                    .padding(8)
+
+                    // 左下：库存状态 + 限时（限时在库存上方避让）
+                    VStack {
+                        Spacer()
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                if let eb = item.expiresBadgeText {
+                                    HStack(spacing: 3) {
+                                        Image(systemName: "timer").font(.system(size: 9))
+                                        Text(eb).font(.system(size: 11, weight: .medium))
+                                    }
+                                    .foregroundColor(item.isExpired ? Color(h: 240, s: 5, l: 92) : .white)
+                                    .padding(.horizontal, 8).padding(.vertical, 2)
+                                    .background(item.isExpired ? Color(h: 240, s: 4, l: 30).opacity(0.85) : Color(h: 25, s: 95, l: 53).opacity(0.9))
+                                    .cornerRadius(10)
+                                }
+                                stockBadge
+                            }
+                            Spacer()
+                            // 右下：积分解锁
+                            if let pc = item.pointCost, pc > 0 {
+                                HStack(spacing: 2) {
+                                    Image(systemName: "dollarsign.circle.fill").font(.system(size: 9))
+                                    Text("\(pc)").font(.system(size: 11, weight: .bold))
+                                }
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 8).padding(.vertical, 2)
+                                .background(Color(h: 38, s: 92, l: 50))
+                                .cornerRadius(10)
+                            }
+                        }
+                    }
+                    .padding(8)
+                }
+                .clipped()
+            )
+            .cornerRadius(12)
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.appBorder.opacity(0.6), lineWidth: 0.5))
+            .clipped()
+    }
+
+    private func rankBadge(text: String, colors: [String], fg: Color) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: "crown.fill").font(.system(size: 10))
+            Text(text).font(.system(size: 11, weight: .semibold))
         }
+        .foregroundColor(fg)
+        .padding(.horizontal, 10).padding(.vertical, 4)
+        .background(
+            LinearGradient(colors: colors.map { Color(hex: $0) },
+                           startPoint: .topLeading, endPoint: .bottomTrailing)
+        )
+        .cornerRadius(12)
+        .shadow(color: .black.opacity(0.08), radius: 2, y: 1)
+    }
+
+    @ViewBuilder
+    private var stockBadge: some View {
         switch item.stockStatus {
-        case "soldout":  return ("领完即止", .appRedFg, .appSecondary)
-        case "restock":  return ("可补码", .appEmeraldFg, .appEmeraldBg)
+        case "soldout":
+            Text("领完即止")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.white)
+                .padding(.horizontal, 8).padding(.vertical, 2)
+                .background(Color.black.opacity(0.7))
+                .cornerRadius(10)
+        case "restock":
+            Text("可补码")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(.white)
+                .padding(.horizontal, 8).padding(.vertical, 2)
+                .background(Color(h: 160, s: 84, l: 30).opacity(0.9))
+                .cornerRadius(10)
         case "limited":
-            if let q = item.quantity { return ("限量 \(q) 份", .appAmberFg, .appAmberBg) }
-            return ("限量", .appAmberFg, .appAmberBg)
-        default: return nil
+            Text(item.quantity.map { "限量 \($0) 份" } ?? "限量")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(.white)
+                .padding(.horizontal, 8).padding(.vertical, 2)
+                .background(Color(h: 38, s: 92, l: 50))
+                .cornerRadius(10)
+        default:
+            EmptyView()
         }
+    }
+
+    // MARK: 信息区（网页：左侧标题/作者/等级头衔/tags，右侧点赞+领到数）
+    private var infoArea: some View {
+        HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(item.title)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.appForeground)
+                    .lineLimit(1)
+                    .padding(.top, 10)
+
+                // 作者
+                HStack(spacing: 6) {
+                    AvatarView(path: item.author?.avatar, name: item.author?.name ?? "", size: 20)
+                    Text(item.author?.name ?? "未知用户")
+                        .font(.system(size: 12))
+                        .foregroundColor(.appMutedFg)
+                        .lineLimit(1)
+                }
+                .padding(.top, 6)
+
+                // 等级 + 头衔
+                HStack(spacing: 4) {
+                    LevelBadgeView(level: item.author?.level ?? 1)
+                    TitleBadgeView(equippedTitle: item.author?.equippedTitle)
+                }
+                .padding(.top, 4)
+
+                // tags（最多 3 个）
+                if let tags = item.tags, !tags.isEmpty {
+                    HStack(spacing: 4) {
+                        ForEach(tags.prefix(3)) { t in
+                            Text(t.name)
+                                .font(.system(size: 11))
+                                .foregroundColor(.appSecondaryFg)
+                                .padding(.horizontal, 8).padding(.vertical, 2)
+                                .background(Color.appSecondary)
+                                .cornerRadius(10)
+                                .lineLimit(1)
+                        }
+                    }
+                    .padding(.top, 6)
+                }
+            }
+
+            Spacer(minLength: 0)
+
+            // 右列：点赞 + 领到数
+            VStack(alignment: .trailing, spacing: 4) {
+                Button { onLike?() } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: liked ? "heart.fill" : "heart")
+                            .font(.system(size: 13))
+                        Text("\(item.likeCount ?? 0)")
+                            .font(.system(size: 12, weight: liked ? .semibold : .regular))
+                    }
+                    .foregroundColor(liked ? .appPrimary : .appMutedFg)
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(liked ? Color.appPrimary.opacity(0.1) : Color.clear)
+                    .cornerRadius(12)
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 8)
+
+                if let cc = item.claimCount, cc > 0 {
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.rectangle").font(.system(size: 10))
+                        Text("\(cc) 人领到").font(.system(size: 11))
+                    }
+                    .foregroundColor(.appMutedFg)
+                    .padding(.horizontal, 8)
+                }
+            }
+        }
+        .padding(.horizontal, 2)
     }
 }

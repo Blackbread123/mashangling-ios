@@ -15,8 +15,8 @@ struct FeedView: View {
     @State private var openDetailId: Int? = nil
 
     private let columns = [
-        GridItem(.flexible(), spacing: 12),
-        GridItem(.flexible(), spacing: 12),
+        GridItem(.flexible(), spacing: 20),
+        GridItem(.flexible(), spacing: 20),
     ]
 
     var body: some View {
@@ -30,7 +30,7 @@ struct FeedView: View {
             } else if vm.items.isEmpty {
                 emptyState
             } else {
-                LazyVGrid(columns: columns, spacing: 12) {
+                LazyVGrid(columns: columns, spacing: 20) {
                     ForEach(Array(vm.items.enumerated()), id: \.element.id) { idx, item in
                         ShowcaseCardView(
                             item: item,
@@ -73,9 +73,10 @@ struct FeedView: View {
         }
     }
 
-    // MARK: 排序栏
+    // MARK: 排序栏（逐行复刻网页 Feed.tsx：排序/平台为整体胶囊容器，时间窗为独立小 pill）
     private var sortBar: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        FlowLayout(spacing: 12) {
+            // 排序：整体胶囊容器
             HStack(spacing: 4) {
                 sortPill(key: "hot", label: "推荐", icon: "flame")
                 sortPill(key: "new", label: "最新", icon: "clock")
@@ -90,39 +91,54 @@ struct FeedView: View {
                             Text("换一批").font(.system(size: 11))
                         }
                         .foregroundColor(.appMutedFg)
-                        .padding(.horizontal, 8).padding(.vertical, 6)
+                        .padding(.horizontal, 10).padding(.vertical, 6)
                     }
                     .buttonStyle(.plain)
                 }
-                Spacer(minLength: 0)
             }
+            .padding(4)
+            .background(Color.appSecondary)
+            .cornerRadius(24)
 
-            HStack(spacing: 6) {
-                if vm.sort == "hot" {
+            // 时间窗（仅热门榜）：独立小 pill，选中深底
+            if vm.sort == "hot" {
+                HStack(spacing: 4) {
                     ForEach(FeedViewModel.windows, id: \.key) { w in
-                        PillButton(title: w.label, selected: vm.window == w.key) {
+                        Button {
                             vm.window = w.key
                             Task { await vm.reload() }
+                        } label: {
+                            Text(w.label)
+                                .font(.system(size: 12, weight: vm.window == w.key ? .medium : .regular))
+                                .foregroundColor(vm.window == w.key ? .appPrimaryFg : .appMutedFg)
+                                .padding(.horizontal, 12).padding(.vertical, 6)
+                                .background(vm.window == w.key ? Color.appPrimary : Color.clear)
+                                .cornerRadius(14)
                         }
-                    }
-                }
-                Spacer(minLength: 0)
-                if showPlatformToggle {
-                    PillButton(title: "全部", selected: vm.platform == "all") {
-                        vm.platform = "all"
-                        Task { await vm.reload() }
-                    }
-                    PillButton(title: "外部无料", selected: vm.platform == "external") {
-                        vm.platform = "external"
-                        Task { await vm.reload() }
+                        .buttonStyle(.plain)
                     }
                 }
             }
+
+            // 平台筛选：整体胶囊容器
+            if showPlatformToggle {
+                HStack(spacing: 4) {
+                    platformPill(key: "all", label: "全部", icon: "square.grid.2x2",
+                                 title: "站内码与外部无料一起看")
+                    platformPill(key: "external", label: "外部无料", icon: "cube.box",
+                                 title: "只看需要寄快递的外部无料")
+                }
+                .padding(4)
+                .background(Color.appSecondary)
+                .cornerRadius(24)
+            }
         }
+        .padding(.bottom, 8)
     }
 
     private func sortPill(key: String, label: String, icon: String) -> some View {
-        Button {
+        let selected = vm.sort == key
+        return Button {
             if key == "foryou" && !authManager.isAuthenticated {
                 showLogin = true
                 return
@@ -131,21 +147,36 @@ struct FeedView: View {
             UserDefaults.standard.set(key, forKey: "msl_feed_sort")
             Task { await vm.reload() }
         } label: {
-            HStack(spacing: 4) {
-                Image(systemName: icon).font(.system(size: 11))
-                Text(label).font(.system(size: 13, weight: vm.sort == key ? .semibold : .regular))
+            HStack(spacing: 6) {
+                Image(systemName: icon).font(.system(size: 12))
+                Text(label).font(.system(size: 14, weight: selected ? .semibold : .regular))
             }
-            .foregroundColor(vm.sort == key ? .appForeground : .appMutedFg)
-            .padding(.horizontal, 12).padding(.vertical, 6)
-            .background(vm.sort == key ? Color.appCard : Color.clear)
-            .cornerRadius(16)
-            .shadow(color: vm.sort == key ? Color.black.opacity(0.08) : .clear, radius: 2, y: 1)
+            .foregroundColor(selected ? .appForeground : .appMutedFg)
+            .padding(.horizontal, 16).padding(.vertical, 6)
+            .background(selected ? Color.appCard : Color.clear)
+            .cornerRadius(20)
+            .shadow(color: selected ? Color.black.opacity(0.06) : .clear, radius: 2, y: 1)
         }
         .buttonStyle(.plain)
-        .padding(.vertical, 3)
-        .padding(.horizontal, 2)
-        .background(Color.appSecondary)
-        .cornerRadius(18)
+    }
+
+    private func platformPill(key: String, label: String, icon: String, title: String) -> some View {
+        let selected = vm.platform == key
+        return Button {
+            vm.platform = key
+            Task { await vm.reload() }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: icon).font(.system(size: 12))
+                Text(label).font(.system(size: 14, weight: selected ? .semibold : .regular))
+            }
+            .foregroundColor(selected ? .appForeground : .appMutedFg)
+            .padding(.horizontal, 16).padding(.vertical, 6)
+            .background(selected ? Color.appCard : Color.clear)
+            .cornerRadius(20)
+            .shadow(color: selected ? Color.black.opacity(0.06) : .clear, radius: 2, y: 1)
+        }
+        .buttonStyle(.plain)
     }
 
     private var emptyState: some View {

@@ -49,9 +49,18 @@ struct HomeView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button { showSearch = true } label: {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundColor(.appForeground)
+                    HStack(spacing: 14) {
+                        Button { showSearch = true } label: {
+                            Image(systemName: "magnifyingglass")
+                                .foregroundColor(.appForeground)
+                        }
+                        // 网页 Header 右上角头像（点进个人主页）
+                        if let me = authManager.currentUser {
+                            NavigationLink(destination: ProfileView(userId: me.id)) {
+                                AvatarView(path: me.avatar, name: me.name ?? "", size: 28)
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                 }
             }
