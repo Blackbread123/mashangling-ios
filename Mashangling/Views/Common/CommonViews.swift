@@ -9,23 +9,60 @@ struct AppImage: View {
     let path: String?
     var contentMode: ContentMode = .fill
 
+    @State private var image: UIImage? = nil
+
+    /// 进程内内存缓存（配合 CacheManager 的磁盘缓存）
+    private static let memCache: NSCache<NSString, UIImage> = {
+        let c = NSCache<NSString, UIImage>()
+        c.countLimit = 200
+        return c
+    }()
+
     var body: some View {
-        if let p = path, SiteConfig.isDataURL(p), let data = SiteConfig.dataFromDataURL(p),
-           let ui = UIImage(data: data) {
-            Image(uiImage: ui)
-                .resizable()
-                .aspectRatio(contentMode: contentMode)
-        } else if let p = path, !p.isEmpty, !SiteConfig.isDataURL(p), let url = SiteConfig.absoluteURL(p) {
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case .success(let img):
-                    img.resizable().aspectRatio(contentMode: contentMode)
-                default:
-                    Color.appSecondary
-                }
+        Group {
+            if let img = image {
+                Image(uiImage: img)
+                    .resizable()
+                    .aspectRatio(contentMode: contentMode)
+            } else {
+                Color.appSecondary
             }
-        } else {
-            Color.appSecondary
+        }
+        .task(id: path) { await load() }
+    }
+
+    @MainActor
+    private func load() async {
+        guard let p = path, !p.isEmpty else { image = nil; return }
+        // dataURL（本地刚上传的图）
+        if SiteConfig.isDataURL(p) {
+            if let data = SiteConfig.dataFromDataURL(p) {
+                image = UIImage(data: data)
+            }
+            return
+        }
+        guard let url = SiteConfig.absoluteURL(p) else { image = nil; return }
+        let key = url.absoluteString as NSString
+        // 1) 内存缓存
+        if let cached = Self.memCache.object(forKey: key) {
+            image = cached
+            return
+        }
+        // 2) 磁盘缓存
+        if let disk = await CacheManager.shared.loadImage(key: url.absoluteString) {
+            Self.memCache.setObject(disk, forKey: key)
+            image = disk
+            return
+        }
+        // 3) 网络下载
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            guard !Task.isCancelled, let img = UIImage(data: data) else { return }
+            Self.memCache.setObject(img, forKey: key)
+            await CacheManager.shared.cacheImage(img, key: url.absoluteString)
+            image = img
+        } catch {
+            // 加载失败保持占位色
         }
     }
 }
