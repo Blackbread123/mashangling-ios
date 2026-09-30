@@ -277,7 +277,8 @@ struct User: Codable, Identifiable {
     let bannedAt: String?
     let superAdmin: Bool?
     let isBot: Bool?
-    let homeModules: String?
+    // 注意：服务端 homeModules 可能是数组也可能是字符串（字段类型不稳定），
+    // App 内用不到它（主页模块走 settings.getHomeModules），这里不声明，避免解码失败。
     let siteTheme: String?
     let createdAt: String?
     let updatedAt: String?

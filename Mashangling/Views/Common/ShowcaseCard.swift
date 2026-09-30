@@ -11,53 +11,56 @@ struct ShowcaseCardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // 封面 + 角标（网页为 4:3 object-cover：容器定比例，图片填充裁切）
-            ZStack(alignment: .topTrailing) {
-                AppImage(path: item.coverImage)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // 封面 + 角标（网页为 4:3 object-cover）
+            // 尺寸由 Color 容器决定（无固有尺寸，比例永远锁定 4:3），图片只在 overlay 里填充裁切
+            Color.appSecondary
+                .aspectRatio(4.0 / 3.0, contentMode: .fit)
+                .overlay(
+                    ZStack(alignment: .topTrailing) {
+                        AppImage(path: item.coverImage)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .clipped()
+
+                        // 右上角平台标签
+                        MiniBadge(text: PlatformLabel.of(item.platform),
+                                  fg: .white, bg: Color.black.opacity(0.55))
+                            .padding(6)
+
+                        // 左上角徽章列
+                        VStack(alignment: .leading, spacing: 4) {
+                            if let rank = rank, rank <= 2 {
+                                Text(rank == 1 ? "👑 NO.1" : "🥈 NO.2")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 6).padding(.vertical, 2)
+                                    .background(rank == 1 ? Color(h: 45, s: 90, l: 45) : Color.gray)
+                                    .cornerRadius(6)
+                            }
+                            if item.pinned == true {
+                                MiniBadge(text: "置顶", fg: .appPrimaryFg, bg: .appPrimary)
+                            }
+                            if let txt = stockBadgeText {
+                                MiniBadge(text: txt.text, fg: txt.fg, bg: txt.bg)
+                            }
+                            if let eb = item.expiresBadgeText {
+                                MiniBadge(text: eb,
+                                          fg: item.isExpired ? .white : .appAmberFg,
+                                          bg: item.isExpired ? .appDestructive : .appAmberBg)
+                            }
+                            if let pc = item.pointCost, pc > 0 {
+                                MiniBadge(text: "\(pc) 积分", fg: .appAmberFg, bg: .appAmberBg)
+                            }
+                            if let cc = item.codeCount, cc > 0 {
+                                MiniBadge(text: "补码×\(cc)", fg: .appEmeraldFg, bg: .appEmeraldBg)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(6)
+                        .frame(maxHeight: .infinity, alignment: .top)
+                    }
                     .clipped()
-
-                // 右上角平台标签
-                MiniBadge(text: PlatformLabel.of(item.platform),
-                          fg: .white, bg: Color.black.opacity(0.55))
-                    .padding(6)
-
-                // 左上角徽章列
-                VStack(alignment: .leading, spacing: 4) {
-                    if let rank = rank, rank <= 2 {
-                        Text(rank == 1 ? "👑 NO.1" : "🥈 NO.2")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 6).padding(.vertical, 2)
-                            .background(rank == 1 ? Color(h: 45, s: 90, l: 45) : Color.gray)
-                            .cornerRadius(6)
-                    }
-                    if item.pinned == true {
-                        MiniBadge(text: "置顶", fg: .appPrimaryFg, bg: .appPrimary)
-                    }
-                    if let txt = stockBadgeText {
-                        MiniBadge(text: txt.text, fg: txt.fg, bg: txt.bg)
-                    }
-                    if let eb = item.expiresBadgeText {
-                        MiniBadge(text: eb,
-                                  fg: item.isExpired ? .white : .appAmberFg,
-                                  bg: item.isExpired ? .appDestructive : .appAmberBg)
-                    }
-                    if let pc = item.pointCost, pc > 0 {
-                        MiniBadge(text: "\(pc) 积分", fg: .appAmberFg, bg: .appAmberBg)
-                    }
-                    if let cc = item.codeCount, cc > 0 {
-                        MiniBadge(text: "补码×\(cc)", fg: .appEmeraldFg, bg: .appEmeraldBg)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(6)
-                .frame(maxHeight: .infinity, alignment: .top)
-            }
-            .background(Color.appSecondary)
-            .aspectRatio(4.0 / 3.0, contentMode: .fit)
-            .frame(maxWidth: .infinity)
-            .clipped()
+                )
+                .clipped()
 
             // 信息区
             VStack(alignment: .leading, spacing: 6) {
