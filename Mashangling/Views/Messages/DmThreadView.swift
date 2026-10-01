@@ -207,8 +207,8 @@ struct DmThreadView: View {
                 .padding(8)
                 .frame(maxWidth: 240)
                 .background(Color.appCard)
-                .cornerRadius(10)
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.appBorder, lineWidth: 0.5))
+                .cornerRadius(4)
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 0.5))
             }
             .buttonStyle(.plain)
         }
@@ -231,8 +231,8 @@ struct DmThreadView: View {
             .padding(8)
             .frame(maxWidth: 240)
             .background(Color.appCard)
-            .cornerRadius(10)
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.appBorder, lineWidth: 0.5))
+            .cornerRadius(4)
+            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 0.5))
         }
         if let p = item.profileUser {
             NavigationLink(destination: ProfileView(userId: p.id)) {
@@ -247,8 +247,8 @@ struct DmThreadView: View {
                 .padding(8)
                 .frame(maxWidth: 240)
                 .background(Color.appCard)
-                .cornerRadius(10)
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.appBorder, lineWidth: 0.5))
+                .cornerRadius(4)
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 0.5))
             }
             .buttonStyle(.plain)
         }

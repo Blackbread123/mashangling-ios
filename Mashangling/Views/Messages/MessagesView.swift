@@ -135,8 +135,8 @@ struct MessagesView: View {
             }
             .padding(12)
             .background(Color.appCard)
-            .cornerRadius(12)
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.appBorder, lineWidth: 0.5))
+            .cornerRadius(4)
+            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 0.5))
         }
         .buttonStyle(.plain)
     }

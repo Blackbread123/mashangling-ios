@@ -410,8 +410,8 @@ struct SettingsView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 12)
                 .background(Color.appCard)
-                .cornerRadius(12)
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.appDestructive.opacity(0.4), lineWidth: 1))
+                .cornerRadius(4)
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appDestructive.opacity(0.4), lineWidth: 1))
         }
         .buttonStyle(.plain)
         .padding(.bottom, 30)

@@ -132,8 +132,8 @@ struct HeartShowcaseView: View {
                                 }
                                 .padding(10)
                                 .background(Color.appCard)
-                                .cornerRadius(10)
-                                .overlay(RoundedRectangle(cornerRadius: 10).stroke(selected?.id == r.id ? Color.appPrimary : Color.appBorder, lineWidth: 0.5))
+                                .cornerRadius(4)
+                                .overlay(RoundedRectangle(cornerRadius: 4).stroke(selected?.id == r.id ? Color.appPrimary : Color.appBorder, lineWidth: 0.5))
                             }
                             .buttonStyle(.plain)
                         }
@@ -189,8 +189,8 @@ struct HeartShowcaseView: View {
                 }
                 .padding(10)
                 .background(Color.appCard)
-                .cornerRadius(10)
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(selected?.id == r.id ? Color.appPrimary : Color.appBorder, lineWidth: 0.5))
+                .cornerRadius(4)
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(selected?.id == r.id ? Color.appPrimary : Color.appBorder, lineWidth: 0.5))
             }
             .buttonStyle(.plain)
             if selected?.id == r.id {
@@ -288,8 +288,8 @@ struct HeartShowcaseView: View {
                             }
                             .padding(.horizontal, 12).padding(.vertical, 9)
                             .background(Color.appCard)
-                            .cornerRadius(10)
-                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.appBorder, lineWidth: 0.5))
+                            .cornerRadius(4)
+                            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 0.5))
                         }
                         .buttonStyle(.plain)
                     }
@@ -351,8 +351,8 @@ struct HeartShowcaseView: View {
         }
         .padding(14)
         .background(Color.appCard)
-        .cornerRadius(12)
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.appBorder, lineWidth: 0.5))
+        .cornerRadius(4)
+        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 0.5))
     }
 
     private func ruleText(_ t: String) -> some View {
@@ -587,8 +587,8 @@ struct MySupportRowView: View {
                 }
                 .padding(10)
                 .background(Color.appCard)
-                .cornerRadius(10)
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.appBorder, lineWidth: 0.5))
+                .cornerRadius(4)
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 0.5))
             }
             .buttonStyle(.plain)
             if open {
@@ -605,8 +605,8 @@ struct MySupportRowView: View {
                 }
                 .padding(12)
                 .background(Color.appCard)
-                .cornerRadius(10)
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.appBorder, lineWidth: 0.5))
+                .cornerRadius(4)
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 0.5))
             }
         }
     }

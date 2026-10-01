@@ -42,8 +42,8 @@ struct StatsDashboardView: View {
                 }
                 .padding(16)
                 .background(Color.appCard)
-                .cornerRadius(16)
-                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.appBorder, lineWidth: 0.5))
+                .cornerRadius(5)
+                .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.appBorder, lineWidth: 0.5))
             }
         }
         .task { await loadAll() }
@@ -295,8 +295,8 @@ struct CardStatsPanelView: View {
                 }
                 .padding(16)
                 .background(Color.appCard)
-                .cornerRadius(16)
-                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.appBorder, lineWidth: 0.5))
+                .cornerRadius(5)
+                .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.appBorder, lineWidth: 0.5))
             }
         }
         .task { await loadAll() }

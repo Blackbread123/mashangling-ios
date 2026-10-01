@@ -144,8 +144,8 @@ struct ProfileView: View {
             }
             .padding(.vertical, 10)
             .background(Color.appCard)
-            .cornerRadius(12)
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.appBorder, lineWidth: 0.5))
+            .cornerRadius(4)
+            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 0.5))
 
             // 积分概览（仅自己）
             if isMe, let pt = points {
@@ -259,8 +259,8 @@ struct ProfileView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 8)
             .background(Color.appCard)
-            .cornerRadius(10)
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.appBorder, lineWidth: 0.5))
+            .cornerRadius(4)
+            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 0.5))
         }
         .buttonStyle(.plain)
     }

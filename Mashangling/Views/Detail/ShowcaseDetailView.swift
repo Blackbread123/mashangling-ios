@@ -1360,8 +1360,8 @@ struct AddressPickSheet: View {
                                 }
                                 .padding(12)
                                 .background(Color.appCard)
-                                .cornerRadius(10)
-                                .overlay(RoundedRectangle(cornerRadius: 10).stroke(selected == idx ? Color.appPrimary : Color.appBorder, lineWidth: 1))
+                                .cornerRadius(4)
+                                .overlay(RoundedRectangle(cornerRadius: 4).stroke(selected == idx ? Color.appPrimary : Color.appBorder, lineWidth: 1))
                             }
                             .buttonStyle(.plain)
                         }

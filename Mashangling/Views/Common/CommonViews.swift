@@ -279,3 +279,125 @@ extension Date {
         return f.string(from: self)
     }
 }
+
+// MARK: - 全局网页顶栏（复刻 Header.tsx 移动端：左「码上领」，右裸搜索图标 + 头像菜单）
+// 用在首页/广场等顶级页面：.webHeader()
+struct WebHeaderModifier: ViewModifier {
+    @EnvironmentObject var authManager: AuthManager
+    @StateObject private var unreadManager = UnreadManager.shared
+    @State private var mobileSearch = false
+    @State private var searchInput = ""
+    @State private var pushSearch = false
+    @State private var showAvatarMenu = false
+
+    func body(content: Content) -> some View {
+        ZStack(alignment: .topTrailing) {
+            VStack(spacing: 0) {
+                if mobileSearch { searchBar }
+                content
+            }
+            if showAvatarMenu {
+                Color.black.opacity(0.001)
+                    .ignoresSafeArea()
+                    .onTapGesture { showAvatarMenu = false }
+                AvatarMenuPanel(close: { showAvatarMenu = false })
+                    .padding(.top, 44)
+                    .padding(.trailing, 8)
+                    .transition(.opacity.combined(with: .scale(scale: 0.95, anchor: .topTrailing)))
+                    .zIndex(1)
+            }
+        }
+        .animation(.easeOut(duration: 0.15), value: showAvatarMenu)
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationTitle("")
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Text("码上领")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundColor(.appForeground)
+            }
+            ToolbarItem(placement: .navigationBarTrailing) {
+                HStack(spacing: 6) {
+                    Button {
+                        withAnimation(.easeOut(duration: 0.15)) { mobileSearch.toggle() }
+                    } label: {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 20))
+                            .foregroundColor(.appMutedFg)
+                            .frame(width: 36, height: 36)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    if let me = authManager.currentUser {
+                        Button { showAvatarMenu.toggle() } label: {
+                            AvatarView(path: me.avatar, name: me.name ?? "U", size: 36)
+                                .overlay(alignment: .topTrailing) {
+                                    if unreadManager.totalUnread > 0 {
+                                        Text(unreadManager.totalUnread > 99 ? "99+" : "\(unreadManager.totalUnread)")
+                                            .font(.system(size: 10, weight: .bold))
+                                            .foregroundColor(.appPrimaryFg)
+                                            .padding(.horizontal, 4)
+                                            .frame(height: 16)
+                                            .background(Color.appPrimary)
+                                            .cornerRadius(8)
+                                            .overlay(Capsule().stroke(Color.appBackground, lineWidth: 2))
+                                            .offset(x: 6, y: -6)
+                                    }
+                                }
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        NavigationLink(destination: LoginView()) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "person").font(.system(size: 14))
+                                Text("登录 / 注册").font(.system(size: 14, weight: .medium))
+                            }
+                            .foregroundColor(.appPrimaryFg)
+                            .padding(.horizontal, 12).padding(.vertical, 7)
+                            .background(Color.appPrimary)
+                            .cornerRadius(18)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .navigationDestination(isPresented: $pushSearch) {
+            SearchView(initialQuery: searchInput)
+        }
+    }
+
+    private var searchBar: some View {
+        HStack(spacing: 0) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 16))
+                .foregroundColor(.appMutedFg)
+                .padding(.leading, 14)
+            TextField("搜索无料码 / 发布人 / 关键词…", text: $searchInput)
+                .font(.system(size: 16))
+                .autocapitalization(.none)
+                .padding(.leading, 8)
+                .onSubmit {
+                    let q = searchInput.trimmingCharacters(in: .whitespaces)
+                    guard !q.isEmpty else { return }
+                    mobileSearch = false
+                    pushSearch = true
+                }
+        }
+        .frame(height: 40)
+        .background(Color.appCard)
+        .overlay(Capsule().stroke(Color.appInput, lineWidth: 0.5))
+        .clipShape(Capsule())
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .padding(.bottom, 12)
+        .background(Color.appBackground)
+        .overlay(alignment: .top) {
+            Rectangle().fill(Color.appBorder.opacity(0.6)).frame(height: 0.5)
+        }
+    }
+}
+
+extension View {
+    func webHeader() -> some View { modifier(WebHeaderModifier()) }
+}

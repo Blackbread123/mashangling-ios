@@ -1,80 +1,101 @@
 import SwiftUI
 
-// MARK: - 广场 Tab（对应网页 PlazaPage.tsx：橱窗广场）
-// 今日标签趋势 + 标签筛选 + 任务中心 + 无料达人榜 + 橱窗信息流
+// MARK: - 广场 Tab（逐行复刻网页 Plaza.tsx + TasksPanel.tsx + Leaderboard.tsx）
+// 今日标签趋势 + 标签筛选 + 任务面板(琥珀色) + 无料达人/上升最快榜 + 橱窗信息流（隐藏排序栏）
 struct PlazaView: View {
     @EnvironmentObject var authManager: AuthManager
     @State private var trending: [Tag] = []
+    @State private var trendingLoaded = false
     @State private var includeTags: [Tag] = []
     @State private var excludeTags: [Tag] = []
-    @State private var filterMode = 0   // 0 添加(包含) 1 屏蔽
-    @State private var tagQuery = ""
+    @State private var pickerOpen = false
+    @State private var pickerMode = 0   // 0 包含 1 屏蔽
+    @State private var pickerQ = ""
     @State private var tagResults: [Tag] = []
     @State private var checkin: CheckinStatus? = nil
     @State private var tasks: TaskProgress? = nil
-    @State private var tasksOpen = false
-    @State private var boardTab = 0     // 0 上升最快 1 周榜 2 月榜
+    @State private var tasksExpanded = UserDefaults.standard.bool(forKey: "msl-tasks-expanded")
+    @State private var claimingKey: String? = nil
+    @State private var boardTab = 0     // 0 无料达人 1 上升最快
+    @State private var boardPeriod = "week" // week / month
     @State private var rising: [PointsLeaderboardUser] = []
     @State private var board: [PointsLeaderboardUser] = []
+    @State private var boardLoaded = false
     @State private var busy = false
 
     var body: some View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 14) {
-                    trendingSection
-                    filterSection
-                    if authManager.isAuthenticated {
-                        tasksCard
-                        boardCard
+                VStack(alignment: .leading, spacing: 0) {
+                    trendingSection.padding(.top, 8)
+                    filterSection.padding(.top, 24)
+                    // 任务面板（仅登录且有数据）+ 达人榜（网页 mt-8）
+                    if authManager.isAuthenticated, tasks != nil {
+                        tasksCard.padding(.top, 32)
+                        leaderboardSection.padding(.top, 24)
+                    } else {
+                        leaderboardSection.padding(.top, 32)
                     }
                     FeedView(includeTagIds: includeTags.map { $0.id },
-                             excludeTagIds: excludeTags.map { $0.id })
+                             excludeTagIds: excludeTags.map { $0.id },
+                             hideSortBar: true)
                         .id("\(includeTags.map { $0.id })-\(excludeTags.map { $0.id })")
+                        .padding(.top, 24)
+                    FooterView()
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .padding(.top, 24)
+                .padding(.bottom, 24)
             }
             .background(Color.appBackground)
-            .navigationTitle("广场")
-            .navigationBarTitleDisplayMode(.inline)
+            .webHeader()
             .task { await load() }
             .refreshable { await load() }
         }
     }
 
-    // MARK: 今日标签趋势
+    // MARK: 今日标签趋势（网页：flame 20 主色 + 20px 粗标题；胶囊带名次/数量）
     private var trendingSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
                 Image(systemName: "flame")
-                    .font(.system(size: 12))
-                    .foregroundColor(.appAmberIcon)
+                    .font(.system(size: 20))
+                    .foregroundColor(.appPrimary)
                 Text("今日标签趋势")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 20, weight: .bold))
                     .foregroundColor(.appForeground)
             }
-            if trending.isEmpty {
-                Text("今天还没有新橱窗打标签")
-                    .font(.system(size: 11))
+            if !trendingLoaded {
+                HStack(spacing: 8) {
+                    ForEach([96, 112, 80], id: \.self) { w in
+                        Capsule().fill(Color.appSecondary).frame(width: CGFloat(w), height: 36)
+                    }
+                }
+            } else if trending.isEmpty {
+                Text("今天还没有新发布的橱窗，第一个发布的标签会出现在这里")
+                    .font(.system(size: 14))
                     .foregroundColor(.appMutedFg)
             } else {
-                FlowLayout(spacing: 6) {
-                    ForEach(trending) { t in
+                FlowLayout(spacing: 8) {
+                    ForEach(Array(trending.enumerated()), id: \.element.id) { i, t in
+                        let included = isIncluded(t)
                         Button { toggleInclude(t) } label: {
-                            HStack(spacing: 4) {
-                                Text("# \(t.name)")
-                                    .font(.system(size: 11, weight: .medium))
+                            HStack(spacing: 6) {
+                                Text("\(i + 1)")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundColor(included ? Color.appPrimaryFg.opacity(0.8) : (i == 0 ? .appPrimary : .appMutedFg))
+                                Text(t.name)
+                                    .font(.system(size: 14))
                                 Text("\(t.todayCount ?? 0) 个新橱窗")
-                                    .font(.system(size: 9))
-                                    .foregroundColor(.appMutedFg)
+                                    .font(.system(size: 11))
+                                    .foregroundColor(included ? Color.appPrimaryFg.opacity(0.7) : .appMutedFg)
                             }
-                            .foregroundColor(isIncluded(t) ? .appPrimaryFg : .appForeground)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(isIncluded(t) ? Color.appPrimary : Color.appCard)
+                            .foregroundColor(included ? .appPrimaryFg : .appForeground)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 6)
+                            .background(included ? Color.appPrimary : Color.appCard)
                             .clipShape(Capsule())
-                            .overlay(Capsule().stroke(Color.appBorder, lineWidth: 0.5))
+                            .overlay(Capsule().stroke(included ? Color.appPrimary : Color.appBorder, lineWidth: 0.5))
                         }
                         .buttonStyle(.plain)
                     }
@@ -83,223 +104,573 @@ struct PlazaView: View {
         }
     }
 
-    // MARK: 标签筛选
+    // MARK: 标签筛选（网页：rounded-2xl border bg-card p-4 卡片）
     private var filterSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "line.3.horizontal.decrease.circle")
-                    .font(.system(size: 12))
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 16))
                     .foregroundColor(.appPrimary)
                 Text("筛选")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.appForeground)
+                if !includeTags.isEmpty || !excludeTags.isEmpty {
+                    Spacer(minLength: 0)
+                    Button {
+                        includeTags = []
+                        excludeTags = []
+                    } label: {
+                        Text("清空筛选")
+                            .font(.system(size: 12))
+                            .foregroundColor(.appMutedFg)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            // 已选条件 + 添加/屏蔽按钮
+            FlowLayout(spacing: 6) {
                 if includeTags.isEmpty && excludeTags.isEmpty {
-                    Text("未设置筛选，下方显示全部橱窗")
-                        .font(.system(size: 10))
+                    Text("未设置筛选，下方显示全部橱窗；点趋势标签或「添加标签」开始筛选")
+                        .font(.system(size: 12))
                         .foregroundColor(.appMutedFg)
                 }
-                Spacer()
-            }
-
-            if !includeTags.isEmpty || !excludeTags.isEmpty {
-                FlowLayout(spacing: 6) {
-                    ForEach(includeTags) { t in
-                        filterChip(t, excluded: false)
-                    }
-                    ForEach(excludeTags) { t in
-                        filterChip(t, excluded: true)
-                    }
+                ForEach(includeTags) { t in
+                    filterChip(t, excluded: false)
                 }
+                ForEach(excludeTags) { t in
+                    filterChip(t, excluded: true)
+                }
+                // 添加标签（虚线主色）
+                Button {
+                    if pickerMode == 0 { pickerOpen.toggle() } else { pickerMode = 0; pickerOpen = true }
+                    pickerQ = ""
+                    tagResults = []
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus").font(.system(size: 12))
+                        Text("添加标签").font(.system(size: 12))
+                    }
+                    .foregroundColor(.appPrimary)
+                    .padding(.horizontal, 10).padding(.vertical, 4)
+                    .overlay(Capsule().stroke(Color.appPrimary.opacity(0.6), style: StrokeStyle(lineWidth: 0.5, dash: [4])))
+                }
+                .buttonStyle(.plain)
+                // 屏蔽标签（虚线灰色）
+                Button {
+                    if pickerMode == 1 { pickerOpen.toggle() } else { pickerMode = 1; pickerOpen = true }
+                    pickerQ = ""
+                    tagResults = []
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus").font(.system(size: 12))
+                        Text("屏蔽标签").font(.system(size: 12))
+                    }
+                    .foregroundColor(.appMutedFg)
+                    .padding(.horizontal, 10).padding(.vertical, 4)
+                    .overlay(Capsule().stroke(Color.appMutedFg.opacity(0.5), style: StrokeStyle(lineWidth: 0.5, dash: [4])))
+                }
+                .buttonStyle(.plain)
             }
+            .padding(.top, 12)
 
-            HStack(spacing: 8) {
-                PillButton(title: "添加标签", selected: filterMode == 0) { filterMode = 0 }
-                PillButton(title: "屏蔽标签", selected: filterMode == 1) { filterMode = 1 }
-                Spacer()
-            }
-            AppTextField(text: $tagQuery,
-                         placeholder: filterMode == 0 ? "搜索要包含的标签…" : "搜索要屏蔽的标签…")
-                .onChange(of: tagQuery) { _ in Task { await searchTags() } }
-                .onSubmit { Task { await searchTags() } }
-            if !tagResults.isEmpty {
-                FlowLayout(spacing: 6) {
-                    ForEach(tagResults) { t in
-                        Button {
-                            if filterMode == 0 { toggleInclude(t) } else { toggleExclude(t) }
-                            tagQuery = ""
-                            tagResults = []
-                        } label: {
-                            Text("# \(t.name)")
-                                .font(.system(size: 11))
-                                .foregroundColor(.appForeground)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 5)
-                                .background(Color.appSecondary)
-                                .clipShape(Capsule())
+            // 标签选择器（点开才显示）
+            if pickerOpen {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 0) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 14))
+                            .foregroundColor(.appMutedFg)
+                            .padding(.leading, 12)
+                        TextField(pickerMode == 0 ? "搜索要包含的标签…" : "搜索要屏蔽的标签…", text: $pickerQ)
+                            .font(.system(size: 14))
+                            .autocapitalization(.none)
+                            .padding(.leading, 6)
+                            .onChange(of: pickerQ) { _ in Task { await searchTags() } }
+                    }
+                    .frame(height: 36)
+                    .background(Color.appCard)
+                    .overlay(Capsule().stroke(Color.appInput, lineWidth: 0.5))
+                    .clipShape(Capsule())
+
+                    ScrollView(showsIndicators: false) {
+                        FlowLayout(spacing: 6) {
+                            ForEach(tagResults.filter { t in !includeTags.contains(where: { $0.id == t.id }) && !excludeTags.contains(where: { $0.id == t.id }) }) { t in
+                                Button {
+                                    if pickerMode == 0 { toggleInclude(t) } else { toggleExclude(t) }
+                                } label: {
+                                    HStack(spacing: 4) {
+                                        Text(t.name).font(.system(size: 12))
+                                        Text(categoryLabel(t.category))
+                                            .font(.system(size: 10))
+                                            .opacity(0.6)
+                                    }
+                                    .foregroundColor(.appSecondaryFg)
+                                    .padding(.horizontal, 10).padding(.vertical, 4)
+                                    .background(Color.appSecondary)
+                                    .clipShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            if tagResults.isEmpty {
+                                Text("没有可\(pickerMode == 0 ? "包含" : "屏蔽")的标签了")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.appMutedFg)
+                                    .padding(.vertical, 12)
+                            }
                         }
-                        .buttonStyle(.plain)
                     }
+                    .frame(maxHeight: 176)
                 }
+                .padding(12)
+                .background(Color.appBackground)
+                .cornerRadius(4)
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 0.5))
+                .padding(.top, 12)
             }
-            Text("包含标签取交集；屏蔽标签取排除（含任一被屏蔽标签的橱窗不显示）")
-                .font(.system(size: 9))
+
+            Text("包含标签取交集（同时含有全部所选标签）；屏蔽标签取排除（含任一被屏蔽标签的橱窗不显示）。")
+                .font(.system(size: 11))
                 .foregroundColor(.appMutedFg)
+                .padding(.top, 10)
+        }
+        .padding(16)
+        .background(Color.appCard)
+        .cornerRadius(5)
+        .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.appBorder, lineWidth: 0.5))
+    }
+
+    private func categoryLabel(_ c: String?) -> String {
+        switch c {
+        case "work": return "作品"
+        case "character": return "角色"
+        case "merch": return "制品"
+        case "other": return "其他"
+        default: return c ?? ""
         }
     }
 
+    // 已选条件 chip：包含=主色实心+X；屏蔽=虚线删除线+X
     private func filterChip(_ t: Tag, excluded: Bool) -> some View {
-        HStack(spacing: 4) {
-            Text(excluded ? "🚫 # \(t.name)" : "# \(t.name)")
-            Button {
-                if excluded { excludeTags.removeAll { $0.id == t.id } }
-                else { includeTags.removeAll { $0.id == t.id } }
-            } label: {
-                Image(systemName: "xmark").font(.system(size: 8))
+        Button {
+            if excluded { excludeTags.removeAll { $0.id == t.id } }
+            else { includeTags.removeAll { $0.id == t.id } }
+        } label: {
+            HStack(spacing: 4) {
+                if excluded {
+                    Text(t.name)
+                        .font(.system(size: 12))
+                        .strikethrough()
+                        .foregroundColor(.appMutedFg)
+                    Image(systemName: "xmark").font(.system(size: 11))
+                        .foregroundColor(.appMutedFg)
+                } else {
+                    Text(t.name)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.appPrimaryFg)
+                    Image(systemName: "xmark").font(.system(size: 11))
+                        .foregroundColor(.appPrimaryFg)
+                }
             }
+            .padding(.horizontal, 10).padding(.vertical, 4)
+            .background(excluded ? Color.clear : Color.appPrimary)
+            .clipShape(Capsule())
+            .overlay(Capsule().stroke(excluded ? Color.appMutedFg.opacity(0.5) : Color.clear,
+                                      style: StrokeStyle(lineWidth: 0.5, dash: excluded ? [4] : [])))
         }
-        .font(.system(size: 10, weight: .medium))
-        .foregroundColor(excluded ? .appDestructive : .appPrimaryFg)
-        .padding(.horizontal, 9)
-        .padding(.vertical, 4)
-        .background(excluded ? Color.appDestructive.opacity(0.12) : Color.appPrimary)
-        .clipShape(Capsule())
+        .buttonStyle(.plain)
     }
 
-    // MARK: 任务中心
+    // MARK: 任务面板（逐行复刻 TasksPanel.tsx：琥珀色高亮卡）
     private var tasksCard: some View {
-        SectionCard {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text("任务")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.appForeground)
-                    Text("完成任务领积分 · 仅自己可见")
-                        .font(.system(size: 10))
-                        .foregroundColor(.appMutedFg)
-                    Spacer()
-                    Button(tasksOpen ? "收起" : "展开") { tasksOpen.toggle() }
-                        .font(.system(size: 12))
-                        .foregroundColor(.appPrimary)
-                }
-
-                // 签到行
-                HStack {
-                    Text("已连续签到 \(checkin?.streak ?? 0) 天")
-                        .font(.system(size: 12))
-                        .foregroundColor(.appForeground)
-                    Spacer()
-                    Button { Task { await doCheckin() } } label: {
-                        Text(checkin?.checkedToday == true ? "今日已签" : "签到")
+        VStack(alignment: .leading, spacing: 0) {
+            // 头部：礼物图标圆 + 标题 + 提示 + 展开/折叠胶囊
+            HStack(spacing: 8) {
+                Image(systemName: "gift.fill")
+                    .font(.system(size: 14))
+                    .foregroundColor(.twAmber700)
+                    .frame(width: 28, height: 28)
+                    .background(Color.twAmber200.opacity(0.8))
+                    .clipShape(Circle())
+                Text("任务")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(.twAmber900)
+                Text("完成任务领积分 · 仅自己可见")
+                    .font(.system(size: 12))
+                    .foregroundColor(.twAmber600)
+                Spacer(minLength: 0)
+                Button {
+                    tasksExpanded.toggle()
+                    UserDefaults.standard.set(tasksExpanded, forKey: "msl-tasks-expanded")
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: tasksExpanded ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 12))
+                        Text(tasksExpanded ? "折叠" : "展开")
                             .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(checkin?.checkedToday == true ? .appMutedFg : .appPrimaryFg)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 6)
-                            .background(checkin?.checkedToday == true ? Color.appSecondary : Color.appPrimary)
+                    }
+                    .foregroundColor(.twAmber800)
+                    .padding(.horizontal, 12).padding(.vertical, 4)
+                    .background(Color.white.opacity(0.7))
+                    .clipShape(Capsule())
+                    .overlay(Capsule().stroke(Color.twAmber300, lineWidth: 0.5))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.bottom, 12)
+
+            // 签到条（网页：rounded-xl border-amber-300 渐变 amber-100→amber-50 px-4 py-3）
+            HStack(spacing: 12) {
+                Image(systemName: "calendar.badge.checkmark")
+                    .font(.system(size: 18))
+                    .foregroundColor(.white)
+                    .frame(width: 36, height: 36)
+                    .background(Color.twAmber400)
+                    .clipShape(Circle())
+                VStack(alignment: .leading, spacing: 2) {
+                    if checkin?.checkedToday == true {
+                        Text("已连续签到 \(checkin?.streak ?? 0) 天")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.twAmber900)
+                    } else {
+                        Text((checkin?.streak ?? 0) > 0 ? "已连续签到 \(checkin?.streak ?? 0) 天，今天还没签" : "每日签到")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.twAmber900)
+                    }
+                    Text("连续签到 10 天 +100 · 100 天 +1000 · 200 天 +2000 · 此后每满 100 天 +2000")
+                        .font(.system(size: 11))
+                        .foregroundColor(.twAmber700.opacity(0.8))
+                }
+                Spacer(minLength: 0)
+                if checkin?.checkedToday == true {
+                    Text("今日已签")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.twEmerald700)
+                        .padding(.horizontal, 12).padding(.vertical, 6)
+                        .background(Color.twEmerald100)
+                        .clipShape(Capsule())
+                } else {
+                    Button { Task { await doCheckin() } } label: {
+                        Text("签到")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 16).padding(.vertical, 6)
+                            .background(Color.twAmber500)
                             .clipShape(Capsule())
                     }
-                    .disabled(checkin?.checkedToday == true || busy)
-                }
-
-                if tasksOpen, let t = tasks {
-                    taskGroup("每日任务", items: t.daily ?? [])
-                    taskGroup("每周任务", items: t.weekly ?? [])
+                    .buttonStyle(.plain)
+                    .disabled(busy)
                 }
             }
+            .padding(.horizontal, 16).padding(.vertical, 12)
+            .background(LinearGradient(colors: [Color.twAmber100, Color.twAmber50], startPoint: .leading, endPoint: .trailing))
+            .cornerRadius(4)
+            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.twAmber300, lineWidth: 0.5))
+            .padding(.bottom, 16)
+
+            // 每日 / 每周任务（移动端单列堆叠）
+            if let t = tasks {
+                taskGroup("每日任务", items: visibleTasks(t.daily ?? []))
+                taskGroup("每周任务", items: visibleTasks(t.weekly ?? []))
+                    .padding(.top, 16)
+            }
+        }
+        .padding(16)
+        .background(Color.appCard)
+        .cornerRadius(5)
+        .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.appBorder, lineWidth: 0.5))
+        .shadow(color: .black.opacity(0.04), radius: 2, y: 1)
+    }
+
+    // 折叠逻辑与网页一致：完成且已领取的收起；全完成奖励条未领取前保留
+    private func visibleTasks(_ list: [TaskItem]) -> [TaskItem] {
+        if tasksExpanded { return list }
+        return list.filter { $0.key.hasSuffix("_all") ? !$0.claimed : !($0.done && $0.claimed) }
+    }
+
+    // 网页 TASK_META 文案逐条一致
+    private func taskMeta(_ key: String) -> (label: String, hint: String?) {
+        switch key {
+        case "daily_login": return ("登录网站", "已登录即完成")
+        case "daily_browse5": return ("浏览 5 个橱窗", nil)
+        case "daily_feedback5": return ("给出 5 次反馈", "点赞 / 返图 / 领到了 / 我想要 都算")
+        case "daily_cardbrowse3": return ("浏览 3 次卡片广场的卡片", nil)
+        case "daily_cardfeedback1": return ("给出 1 次卡片反馈", "卡片点赞 / 想要 / 收藏 / 评论 都算")
+        case "weekly_publish1": return ("发布 1 个橱窗", nil)
+        case "weekly_cardcomment1": return ("评论 1 次卡片", nil)
+        case "weekly_share1": return ("分享 1 次橱窗", "点橱窗「分享」，发给好友或复制链接都算")
+        case "daily_all": return ("完成全部每日任务", nil)
+        case "weekly_all": return ("完成全部每周任务", nil)
+        default: return (key, nil)
         }
     }
 
     private func taskGroup(_ title: String, items: [TaskItem]) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(title)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.appMutedFg)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(.twAmber700)
+                .textCase(.uppercase)
+                .tracking(0.5)
             ForEach(items) { item in
-                HStack(spacing: 8) {
-                    Text(item.label)
-                        .font(.system(size: 12))
-                        .foregroundColor(.appForeground)
-                    Text("\(item.progress)/\(item.goal) · +\(item.reward)")
-                        .font(.system(size: 10))
-                        .foregroundColor(.appMutedFg)
-                    Spacer()
-                    if item.claimed {
-                        MiniBadge(text: "已领取", fg: .appMutedFg, bg: .appSecondary)
-                    } else if item.done {
-                        Button { Task { await claimTask(item.key) } } label: {
-                            Text("领取")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(.appPrimaryFg)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 4)
-                                .background(Color.appPrimary)
-                                .clipShape(Capsule())
-                        }
-                        .disabled(busy)
-                    }
-                }
+                taskRow(item)
             }
         }
     }
 
-    // MARK: 无料达人榜
-    private var boardCard: some View {
-        SectionCard {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("无料达人")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.appForeground)
-                    Spacer()
-                    HStack(spacing: 6) {
-                        PillButton(title: "上升最快", selected: boardTab == 0) {
-                            boardTab = 0
-                            Task { await loadBoard() }
-                        }
-                        PillButton(title: "周榜", selected: boardTab == 1) {
-                            boardTab = 1
-                            Task { await loadBoard() }
-                        }
-                        PillButton(title: "月榜", selected: boardTab == 2) {
-                            boardTab = 2
-                            Task { await loadBoard() }
-                        }
+    // 单条任务（网页 TaskRow：图标 + 文案 + 进度 + 领取按钮 + 进度条）
+    private func taskRow(_ item: TaskItem) -> some View {
+        let meta = taskMeta(item.key)
+        let isBonus = item.key.hasSuffix("_all")
+        let pct = item.goal > 0 ? min(1.0, Double(item.progress) / Double(item.goal)) : 0
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: item.claimed ? "checkmark.circle" : "circle")
+                    .font(.system(size: 15))
+                    .foregroundColor(item.claimed ? .twEmerald500 : (item.done ? .twAmber500 : .twAmber300))
+                VStack(alignment: .leading, spacing: 1) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(meta.label)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.twAmber900)
+                        Text("+\(item.reward)")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.twAmber600)
+                    }
+                    if let hint = meta.hint {
+                        Text(hint)
+                            .font(.system(size: 11))
+                            .foregroundColor(.twAmber700.opacity(0.7))
                     }
                 }
-                Text("按农场可用积分排名 · 每周日 23:59 定榜，第一名 +100 分")
-                    .font(.system(size: 9))
-                    .foregroundColor(.appMutedFg)
-                let list = boardTab == 0 ? rising : board
-                ForEach(Array(list.prefix(10).enumerated()), id: \.element.id) { i, u in
-                    NavigationLink(destination: ProfileView(userId: u.userId)) {
-                        HStack(spacing: 10) {
-                            Text("\(i + 1)")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(i == 0 ? .appAmberFg : .appMutedFg)
-                                .frame(width: 22)
-                            AvatarView(path: u.avatar, name: u.name ?? "", size: 28)
-                            Text(u.name ?? "")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(.appForeground)
-                                .lineLimit(1)
-                            if let lv = u.level { LevelBadgeView(level: lv) }
-                            TitleBadgeView(equippedTitle: u.equippedTitle, plain: true)
-                            Spacer()
-                            Text("\(u.points ?? u.weekPoints ?? 0)分")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(.appPrimary)
-                        }
+                Spacer(minLength: 0)
+                Text("\(item.progress)/\(item.goal)")
+                    .font(.system(size: 12))
+                    .monospacedDigit()
+                    .foregroundColor(.twAmber700)
+                if item.claimed {
+                    Text("已领取")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.twEmerald700)
+                        .padding(.horizontal, 8).padding(.vertical, 2)
+                        .background(Color.twEmerald100)
+                        .clipShape(Capsule())
+                } else if item.done {
+                    Button { Task { await claimTask(item.key) } } label: {
+                        Text("领取")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 10).padding(.vertical, 2)
+                            .background(Color.twAmber500)
+                            .clipShape(Capsule())
                     }
                     .buttonStyle(.plain)
+                    .disabled(claimingKey != nil)
                 }
-                if list.isEmpty {
-                    Text("暂无上榜数据")
-                        .font(.system(size: 11))
-                        .foregroundColor(.appMutedFg)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
+            }
+            // 进度条 h-1.5
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.twAmber100).frame(height: 6)
+                    Capsule()
+                        .fill(item.claimed ? Color.twEmerald400 : (item.done ? Color.twAmber500 : Color.twAmber300))
+                        .frame(width: geo.size.width * pct, height: 6)
+                }
+            }
+            .frame(height: 6)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(isBonus ? Color.twAmber100.opacity(0.8) : Color.white.opacity(0.6))
+        .cornerRadius(3)
+        .overlay(RoundedRectangle(cornerRadius: 3).stroke(isBonus ? Color.twAmber300 : Color.twAmber200.opacity(0.7), lineWidth: 0.5))
+    }
+
+    // MARK: 无料达人榜 / 上升最快（逐行复刻 Leaderboard.tsx）
+    private var leaderboardSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // 顶部切换：主胶囊组（无料达人/上升最快）+ 周期组（周榜/月榜）+ 右侧说明
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    HStack(spacing: 2) {
+                        boardTabBtn(0, "无料达人")
+                        boardTabBtn(1, "上升最快")
+                    }
+                    .padding(2)
+                    .background(Color.appCard)
+                    .clipShape(Capsule())
+                    .overlay(Capsule().stroke(Color.appBorder, lineWidth: 0.5))
+
+                    if boardTab == 0 {
+                        HStack(spacing: 2) {
+                            periodBtn("week", "周榜")
+                            periodBtn("month", "月榜")
+                        }
+                        .padding(2)
+                        .background(Color.appCard)
+                        .clipShape(Capsule())
+                        .overlay(Capsule().stroke(Color.appBorder, lineWidth: 0.5))
+                    }
+                    Spacer(minLength: 0)
+                }
+                Text(boardTab == 1 ? "按本周较上周的积分涨幅排名" : "按农场可用积分排名（总积分-已消耗）· 每周日 23:59 定榜，第一名 +100 分")
+                    .font(.system(size: 11))
+                    .foregroundColor(.appMutedFg)
+            }
+
+            // 榜单容器（rounded-2xl border bg-card，行间分隔线）
+            VStack(spacing: 0) {
+                if boardTab == 0 {
+                    if board.isEmpty && boardLoaded {
+                        Text("本期还没有人上榜，去发布橱窗攒积分吧～")
+                            .font(.system(size: 12))
+                            .foregroundColor(.appMutedFg)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 32)
+                    } else {
+                        ForEach(Array(board.enumerated()), id: \.element.id) { i, u in
+                            boardRow(u, index: i)
+                        }
+                    }
+                } else {
+                    if rising.isEmpty && boardLoaded {
+                        Text("本周还没有新的积分变化")
+                            .font(.system(size: 12))
+                            .foregroundColor(.appMutedFg)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 32)
+                    } else {
+                        ForEach(Array(rising.enumerated()), id: \.element.id) { i, u in
+                            risingRow(u, index: i)
+                        }
+                    }
+                }
+            }
+            .background(Color.appCard)
+            .cornerRadius(5)
+            .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.appBorder, lineWidth: 0.5))
+            .clipped()
+        }
+    }
+
+    private func boardTabBtn(_ idx: Int, _ label: String) -> some View {
+        Button {
+            boardTab = idx
+            Task { await loadBoard() }
+        } label: {
+            Text(label)
+                .font(.system(size: 12, weight: boardTab == idx ? .medium : .regular))
+                .foregroundColor(boardTab == idx ? .appPrimaryFg : .appMutedFg)
+                .padding(.horizontal, 12).padding(.vertical, 4)
+                .background(boardTab == idx ? Color.appPrimary : Color.clear)
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func periodBtn(_ key: String, _ label: String) -> some View {
+        Button {
+            boardPeriod = key
+            Task { await loadBoard() }
+        } label: {
+            Text(label)
+                .font(.system(size: 11, weight: boardPeriod == key ? .medium : .regular))
+                .foregroundColor(boardPeriod == key ? .appSecondaryFg : .appMutedFg)
+                .padding(.horizontal, 10).padding(.vertical, 2)
+                .background(boardPeriod == key ? Color.appSecondary : Color.clear)
+                .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // 达人榜行：第一名皇冠+母鸡，2/3 名特殊色，头像+昵称+等级+头衔+积分
+    private func boardRow(_ u: PointsLeaderboardUser, index i: Int) -> some View {
+        NavigationLink(destination: ProfileView(userId: u.userId)) {
+            HStack(spacing: 10) {
+                if i == 0 {
+                    HStack(spacing: 2) {
+                        Image(systemName: "crown.fill")
+                            .font(.system(size: 13))
+                            .foregroundColor(.twAmber500)
+                        AsyncImage(url: URL(string: "https://mashangling.kimi.site/hen.png")) { img in
+                            img.resizable().interpolation(.none).scaledToFit()
+                        } placeholder: { Color.clear }
+                        .frame(width: 18, height: 18)
+                    }
+                    .frame(width: 28)
+                } else {
+                    Text("\(i + 1)")
+                        .font(.system(size: 12, weight: .bold))
+                        .monospacedDigit()
+                        .foregroundColor(i == 1 ? Color.twSlate400 : (i == 2 ? Color.twAmber700.opacity(0.7) : Color.appMutedFg))
+                        .frame(width: 28)
+                }
+                AvatarView(path: u.avatar, name: u.name ?? "", size: 28)
+                HStack(spacing: 4) {
+                    Text(u.name ?? "未知用户")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.appForeground)
+                        .lineLimit(1)
+                    if let lv = u.level { LevelBadgeView(level: lv) }
+                    TitleBadgeView(equippedTitle: u.equippedTitle, plain: true)
+                }
+                Spacer(minLength: 0)
+                (Text("\(u.points ?? 0)")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.appPrimary)
+                 + Text(" 分")
+                    .font(.system(size: 10))
+                    .foregroundColor(.appMutedFg))
+                    .monospacedDigit()
+            }
+            .padding(.horizontal, 14).padding(.vertical, 8)
+            .overlay(alignment: .bottom) {
+                if i < board.count - 1 {
+                    Rectangle().fill(Color.appBorder.opacity(0.6)).frame(height: 0.5)
                 }
             }
         }
+        .buttonStyle(.plain)
+    }
+
+    // 上升最快行：🔥⚡🚀/🌱 + 上周→本周 + 涨幅胶囊
+    private func risingRow(_ u: PointsLeaderboardUser, index i: Int) -> some View {
+        let marks = ["🔥", "⚡", "🚀"]
+        let mark = (u.rise ?? 0) > 0 ? marks[min(2, i)] : "🌱"
+        return NavigationLink(destination: ProfileView(userId: u.userId)) {
+            HStack(spacing: 10) {
+                Text(mark)
+                    .font(.system(size: 14))
+                    .frame(width: 24)
+                AvatarView(path: u.avatar, name: u.name ?? "", size: 28)
+                HStack(spacing: 4) {
+                    Text(u.name ?? "未知用户")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.appForeground)
+                        .lineLimit(1)
+                    TitleBadgeView(equippedTitle: u.equippedTitle, plain: true)
+                }
+                Spacer(minLength: 0)
+                HStack(spacing: 6) {
+                    Text("上周 \(u.lastWeekPoints ?? 0) → 本周 \(u.weekPoints ?? 0)")
+                        .font(.system(size: 11))
+                        .foregroundColor(.appMutedFg)
+                    Text((u.rise ?? 0) > 0 ? "+\(u.rise ?? 0)" : "\(u.rise ?? 0)")
+                        .font(.system(size: 11, weight: .bold))
+                        .monospacedDigit()
+                        .foregroundColor((u.rise ?? 0) > 0 ? Color(h: 140, s: 16, l: 42) : .appMutedFg)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background((u.rise ?? 0) > 0 ? Color.twEmerald500.opacity(0.1) : Color.appSecondary)
+                        .clipShape(Capsule())
+                }
+            }
+            .padding(.horizontal, 14).padding(.vertical, 8)
+            .overlay(alignment: .bottom) {
+                if i < rising.count - 1 {
+                    Rectangle().fill(Color.appBorder.opacity(0.6)).frame(height: 0.5)
+                }
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: 逻辑
@@ -322,27 +693,25 @@ struct PlazaView: View {
     }
 
     private func searchTags() async {
-        let q = tagQuery.trimmingCharacters(in: .whitespaces)
-        tagResults = (try? await MashanglingAPI.shared.tag.search(q: q, limit: 10)) ?? []
+        tagResults = (try? await MashanglingAPI.shared.tag.search(q: pickerQ, limit: 20)) ?? []
     }
 
     private func load() async {
         trending = (try? await MashanglingAPI.shared.tag.trendingToday()) ?? []
+        trendingLoaded = true
+        await loadBoard()
         guard authManager.isAuthenticated else { return }
         checkin = try? await MashanglingAPI.shared.task.checkinStatus()
         tasks = try? await MashanglingAPI.shared.task.mine()
-        await loadBoard()
     }
 
     private func loadBoard() async {
-        switch boardTab {
-        case 0:
-            rising = (try? await MashanglingAPI.shared.points.rising(limit: 10)) ?? []
-        case 1:
-            board = (try? await MashanglingAPI.shared.points.leaderboard(period: "week")) ?? []
-        default:
-            board = (try? await MashanglingAPI.shared.points.leaderboard(period: "month")) ?? []
+        if boardTab == 0 {
+            board = (try? await MashanglingAPI.shared.points.leaderboard(period: boardPeriod)) ?? []
+        } else {
+            rising = (try? await MashanglingAPI.shared.points.rising(limit: 5)) ?? []
         }
+        boardLoaded = true
     }
 
     private func doCheckin() async {
@@ -350,17 +719,23 @@ struct PlazaView: View {
         defer { busy = false }
         do {
             let r = try await MashanglingAPI.shared.task.checkin()
-            ToastCenter.shared.success(r.already == true ? "今天已经签到过了" : "签到成功 +\(r.reward ?? 0) 积分")
+            if r.already == true {
+                ToastCenter.shared.success("今天已经签到过了")
+            } else if (r.reward ?? 0) > 0 {
+                ToastCenter.shared.success("连续签到 \(r.streak ?? 0) 天，奖励 +\(r.reward ?? 0) 积分！")
+            } else {
+                ToastCenter.shared.success("签到成功，已连续 \(r.streak ?? 0) 天")
+            }
             checkin = try? await MashanglingAPI.shared.task.checkinStatus()
         } catch { ToastCenter.shared.error(error.localizedDescription) }
     }
 
     private func claimTask(_ key: String) async {
-        busy = true
-        defer { busy = false }
+        claimingKey = key
+        defer { claimingKey = nil }
         do {
             let r = try await MashanglingAPI.shared.task.claim(taskKey: key)
-            ToastCenter.shared.success(r.already == true ? "已领取过" : "领取成功 +\(r.reward ?? 0) 积分")
+            ToastCenter.shared.success(r.already == true ? "该奖励已领取过" : "领取成功，+\(r.reward ?? 0) 积分")
             tasks = try? await MashanglingAPI.shared.task.mine()
         } catch { ToastCenter.shared.error(error.localizedDescription) }
     }
@@ -714,8 +1089,8 @@ struct CardDetailSheet: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 8)
             .background(Color.appCard)
-            .cornerRadius(10)
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.appBorder, lineWidth: 0.5))
+            .cornerRadius(4)
+            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 0.5))
         }
         .buttonStyle(.plain)
     }
