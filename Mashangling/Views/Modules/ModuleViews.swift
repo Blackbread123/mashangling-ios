@@ -1,4 +1,5 @@
 import SwiftUI
+import Charts
 
 // MARK: - 领取申请（发布者审批，对应网页 Claims.tsx）
 struct ClaimsView: View {
@@ -445,357 +446,519 @@ struct MyCommentsView: View {
 
 // MARK: - 积分与等级（对应网页 Points.tsx）
 struct PointsView: View {
-    private let initialTab: Int
-    @EnvironmentObject var authManager: AuthManager
     @State private var my: PointsMy? = nil
-    @State private var records: [PointLogRow] = []
-    @State private var leaderboard: [PointsLeaderboardUser] = []
-    @State private var period = "week"
-    @State private var checkin: CheckinStatus? = nil
-    @State private var tasks: TaskProgress? = nil
-    @State private var tab: Int = 0
-
-    init(initialTab: Int = 0) {
-        self.initialTab = initialTab
-        _tab = State(initialValue: initialTab)
-    }
     @State private var busy = false
+
+    /// TITLES 固定顺序（对应 contracts/levels.ts 的 Object.entries 顺序）
+    private let titleOrder = ["eggking", "buyking", "weeklyking", "seveneggs"]
 
     var body: some View {
         ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 14) {
-                // 总览卡
-                if let p = my {
-                    overviewCard(p)
-                } else {
-                    LoadingView()
-                }
+            VStack(alignment: .leading, spacing: 0) {
+                Text("积分与等级")
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundColor(.appForeground)
+                Text("发布橱窗 +10 · 被返图 +5 · 被领到了 +3 · 被点赞 +2 · 发布返图 +1（「没有了」「我想要」不计分）")
+                    .font(.system(size: 14))
+                    .foregroundColor(.appMutedFg)
+                    .padding(.top, 6)
 
-                // 签到
-                checkinCard
-
-                // 任务
-                if let t = tasks {
-                    tasksCard(t)
-                }
-
-                // 头衔
-                if let titles = my?.titles, !titles.isEmpty {
-                    titlesCard(titles)
-                }
-
-                // 榜单 / 流水
-                HStack(spacing: 0) {
-                    tabBtn(0, "达人榜")
-                    tabBtn(1, "积分流水")
-                }
-                .padding(3)
-                .background(Color.appSecondary)
-                .cornerRadius(12)
-
-                if tab == 0 {
-                    leaderboardSection
-                } else {
-                    recordsSection
-                }
+                levelCard
+                    .padding(.top, 24)
+                titlesCard
+                    .padding(.top, 24)
+                levelsTableCard
+                    .padding(.top, 24)
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 14)
+            .padding(.top, 32)
+            .padding(.bottom, 32)
         }
         .background(Color.appBackground)
         .navigationTitle("积分与等级")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                NavigationLink(destination: ShopView()) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "bag")
-                            .font(.system(size: 12))
-                        Text("商店")
-                            .font(.system(size: 13))
-                    }
-                    .foregroundColor(.appPrimary)
-                }
-            }
-        }
-        .task { await load() }
-        .refreshable { await load() }
+        .task { my = try? await MashanglingAPI.shared.points.my() }
+        .refreshable { my = try? await MashanglingAPI.shared.points.my() }
     }
 
-    private func overviewCard(_ p: PointsMy) -> some View {
-        SectionCard {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .bottom) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("\(p.points)")
-                            .font(.system(size: 32, weight: .bold))
-                            .foregroundColor(.appForeground)
-                        Text("总积分 · 可用 \(p.available)")
-                            .font(.system(size: 11))
-                            .foregroundColor(.appMutedFg)
-                    }
-                    Spacer()
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text("Lv.\(p.level) \(p.band)")
-                            .font(.system(size: 14, weight: .semibold))
+    // 我的等级卡
+    private var levelCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let m = my {
+                HStack(spacing: 16) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(Color.appPrimary.opacity(0.1))
+                        Image(systemName: "oval")
+                            .font(.system(size: 24))
                             .foregroundColor(.appPrimary)
-                        Text("本周 +\(p.weekPoints ?? 0) · 本月 +\(p.monthPoints ?? 0)")
-                            .font(.system(size: 10))
+                    }
+                    .frame(width: 56, height: 56)
+                    VStack(alignment: .leading, spacing: 0) {
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Text("Lv.\(m.level)")
+                                .font(.system(size: 30, weight: .bold))
+                                .foregroundColor(.appForeground)
+                            Text(m.band)
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(.appPrimary)
+                        }
+                        Text("总积分 \(m.points) · 本周 \(m.weekPoints ?? 0) · 本月 \(m.monthPoints ?? 0)")
+                            .font(.system(size: 14))
                             .foregroundColor(.appMutedFg)
+                            .padding(.top, 6)
                     }
                 }
-                ProgressView(value: p.need > 0 ? Double(p.into) / Double(p.need) : 1)
-                    .tint(.appPrimary)
-                Text(p.maxLevel == true ? "已满级" : "距 Lv.\(p.level + 1) 还需 \(p.need - p.into) 积分")
-                    .font(.system(size: 10))
+                if m.maxLevel == true {
+                    HStack(spacing: 6) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 14))
+                        Text("已达满级 30 级，传说鸡舍主！")
+                    }
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.fixAmber600)
+                    .padding(.top, 16)
+                } else {
+                    let pct: Double = m.need > 0 ? min(1.0, Double(m.into) / Double(m.need)) : 1.0
+                    Capsule()
+                        .fill(Color.appSecondary)
+                        .frame(height: 10)
+                        .overlay(alignment: .leading) {
+                            GeometryReader { g in
+                                Capsule()
+                                    .fill(Color.appPrimary)
+                                    .frame(width: g.size.width * pct)
+                            }
+                        }
+                        .padding(.top, 16)
+                    Text("距 Lv.\(m.level + 1) 还需 \(m.need - m.into) 分（本级 \(m.into)/\(m.need)）")
+                        .font(.system(size: 12))
+                        .foregroundColor(.appMutedFg)
+                        .padding(.top, 6)
+                }
+            } else {
+                Text("加载中…")
+                    .font(.system(size: 14))
                     .foregroundColor(.appMutedFg)
             }
         }
+        .padding(24)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.appCard)
+        .cornerRadius(5)
+        .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.appBorder, lineWidth: 1))
     }
 
-    private var checkinCard: some View {
-        SectionCard {
-            HStack {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("每日签到")
+    // 头衔卡
+    private var titlesCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 6) {
+                Image(systemName: "chart.line.uptrend.xyaxis")
+                    .font(.system(size: 18))
+                    .foregroundColor(.appPrimary)
+                Text("头衔")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(.appForeground)
+            }
+            Text("无料达人周榜按农场可用积分（总积分-已消耗）排名，每周日 23:59 定榜，第一名获得「周榜冠军」头衔和 100 积分奖励；头衔佩戴后全站可见。")
+                .font(.system(size: 12))
+                .foregroundColor(.appMutedFg)
+                .padding(.top, 4)
+            VStack(spacing: 10) {
+                ForEach(titleOrder, id: \.self) { key in
+                    let meta = Levels.titles[key] ?? (key, "🏅", "")
+                    let owned = my?.titles?.first(where: { $0.key == key })
+                    titleRow(meta: meta, owned: owned, key: key)
+                }
+            }
+            .padding(.top, 16)
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.appCard)
+        .cornerRadius(5)
+        .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.appBorder, lineWidth: 1))
+    }
+
+    private func titleRow(meta: (label: String, icon: String, desc: String), owned: PointsMy.TitleItem?, key: String) -> some View {
+        HStack(spacing: 12) {
+            Text(meta.icon)
+                .font(.system(size: 24))
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 8) {
+                    Text(meta.label)
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(.appForeground)
-                    Text("已连续签到 \(checkin?.streak ?? 0) 天")
+                    if owned?.equipped == true {
+                        Text("佩戴中")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.fixAmber700)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 2)
+                            .background(Color.fixAmber100)
+                            .clipShape(Capsule())
+                    }
+                }
+                Text(meta.desc)
+                    .font(.system(size: 12))
+                    .foregroundColor(.appMutedFg)
+                if let o = owned {
+                    Text("获得于 \(DateFmt.zhDate(o.earnedAt))")
                         .font(.system(size: 11))
                         .foregroundColor(.appMutedFg)
                 }
-                Spacer()
-                Button { Task { await doCheckin() } } label: {
-                    Text(checkin?.checkedToday == true ? "今日已签" : "签到")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(checkin?.checkedToday == true ? .appMutedFg : .appPrimaryFg)
-                        .padding(.horizontal, 22)
-                        .padding(.vertical, 9)
-                        .background(checkin?.checkedToday == true ? Color.appSecondary : Color.appPrimary)
+            }
+            Spacer()
+            if let o = owned {
+                Button { Task { await equip(key: key, currentlyEquipped: o.equipped) } } label: {
+                    Text(o.equipped ? "取下" : "佩戴")
+                        .font(.system(size: 13, weight: o.equipped ? .regular : .medium))
+                        .foregroundColor(o.equipped ? .appForeground : .appPrimaryFg)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 7)
+                        .background(o.equipped ? Color.clear : Color.appPrimary)
                         .clipShape(Capsule())
+                        .overlay(Capsule().stroke(o.equipped ? Color.appBorder : Color.clear, lineWidth: 1))
                 }
-                .disabled(checkin?.checkedToday == true || busy)
-            }
-        }
-    }
-
-    private func tasksCard(_ t: TaskProgress) -> some View {
-        SectionCard {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("任务中心")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.appForeground)
-                taskGroup("每日任务", items: t.daily ?? [])
-                taskGroup("每周任务", items: t.weekly ?? [])
-            }
-        }
-    }
-
-    private func taskGroup(_ title: String, items: [TaskItem]) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(.appMutedFg)
-            ForEach(items) { item in
-                HStack(spacing: 8) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(item.label)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.appForeground)
-                        Text("进度 \(item.progress)/\(item.goal) · 奖励 +\(item.reward)")
-                            .font(.system(size: 10))
-                            .foregroundColor(.appMutedFg)
-                    }
-                    Spacer()
-                    if item.claimed {
-                        MiniBadge(text: "已领取", fg: .appMutedFg, bg: .appSecondary)
-                    } else if item.done {
-                        Button { Task { await claimTask(item.key) } } label: {
-                            Text("领取")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(.appPrimaryFg)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 5)
-                                .background(Color.appPrimary)
-                                .clipShape(Capsule())
-                        }
-                        .disabled(busy)
-                    } else {
-                        MiniBadge(text: "进行中", fg: .appAmberFg, bg: .appAmberBg)
-                    }
-                }
-            }
-        }
-    }
-
-    private func titlesCard(_ titles: [PointsMy.TitleItem]) -> some View {
-        SectionCard {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("我的头衔")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.appForeground)
-                ForEach(titles) { t in
-                    let meta = Levels.titles[t.key] ?? (t.key, "🏅", "")
-                    HStack(spacing: 8) {
-                        Text("\(meta.icon) \(meta.label)")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.appForeground)
-                        Text(meta.desc)
-                            .font(.system(size: 10))
-                            .foregroundColor(.appMutedFg)
-                            .lineLimit(1)
-                        Spacer()
-                        Button { Task { await equip(t) } } label: {
-                            Text(t.equipped ? "卸下" : "佩戴")
-                                .font(.system(size: 11))
-                                .foregroundColor(t.equipped ? .appMutedFg : .appPrimary)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 5)
-                                .overlay(Capsule().stroke(t.equipped ? Color.appBorder : Color.appPrimary, lineWidth: 1))
-                        }
-                        .disabled(busy)
-                    }
-                }
-            }
-        }
-    }
-
-    private var leaderboardSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                PillButton(title: "周榜", selected: period == "week") {
-                    period = "week"; Task { await loadBoard() }
-                }
-                PillButton(title: "月榜", selected: period == "month") {
-                    period = "month"; Task { await loadBoard() }
-                }
-                Spacer()
-                Text("每周日 23:59 定榜，第一获「鸡蛋王」头衔")
-                    .font(.system(size: 9))
-                    .foregroundColor(.appMutedFg)
-            }
-            ForEach(Array(leaderboard.enumerated()), id: \.element.id) { i, u in
-                NavigationLink(destination: ProfileView(userId: u.userId)) {
-                    HStack(spacing: 10) {
-                        Text("\(i + 1)")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(i == 0 ? .appAmberFg : .appMutedFg)
-                            .frame(width: 24)
-                        AvatarView(path: u.avatar, name: u.name ?? "", size: 32)
-                        Text(u.name ?? "").font(.system(size: 13, weight: .medium)).foregroundColor(.appForeground)
-                        TitleBadgeView(equippedTitle: u.equippedTitle, plain: true)
-                        Spacer()
-                        Text("\(period == "week" ? (u.weekPoints ?? 0) : (u.points ?? 0)) 分")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(.appPrimary)
-                    }
-                    .padding(.vertical, 4)
-                }
-                .buttonStyle(.plain)
-            }
-            if leaderboard.isEmpty {
-                Text("暂无上榜数据")
-                    .font(.system(size: 12))
-                    .foregroundColor(.appMutedFg)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 20)
-            }
-        }
-    }
-
-    private var recordsSection: some View {
-        VStack(spacing: 0) {
-            ForEach(records) { r in
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(r.label)
-                            .font(.system(size: 12))
-                            .foregroundColor(.appForeground)
-                        Text(DateFmt.full(r.createdAt))
-                            .font(.system(size: 10))
-                            .foregroundColor(.appMutedFg)
-                    }
-                    Spacer()
-                    Text(r.delta >= 0 ? "+\(r.delta)" : "\(r.delta)")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(r.delta >= 0 ? .appEmeraldFg : .appDestructive)
-                }
-                .padding(.vertical, 8)
-                if r.id != records.last?.id { Divider() }
-            }
-            if records.isEmpty {
-                Text("暂无流水")
-                    .font(.system(size: 12))
-                    .foregroundColor(.appMutedFg)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 20)
-            }
-        }
-        .padding(.horizontal, 12)
-        .background(Color.appCard)
-        .cornerRadius(4)
-        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 0.5))
-    }
-
-    private func tabBtn(_ idx: Int, _ title: String) -> some View {
-        Button { tab = idx } label: {
-            Text(title)
-                .font(.system(size: 13, weight: tab == idx ? .semibold : .regular))
-                .foregroundColor(tab == idx ? .appForeground : .appMutedFg)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .background(tab == idx ? Color.appCard : Color.clear)
-                .cornerRadius(10)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func load() async {
-        my = try? await MashanglingAPI.shared.points.my()
-        records = (try? await MashanglingAPI.shared.points.records()) ?? []
-        checkin = try? await MashanglingAPI.shared.task.checkinStatus()
-        tasks = try? await MashanglingAPI.shared.task.mine()
-        await loadBoard()
-    }
-
-    private func loadBoard() async {
-        leaderboard = (try? await MashanglingAPI.shared.points.leaderboard(period: period)) ?? []
-    }
-
-    private func doCheckin() async {
-        busy = true
-        defer { busy = false }
-        do {
-            let r = try await MashanglingAPI.shared.task.checkin()
-            if r.already == true {
-                ToastCenter.shared.show("今天已经签到过了")
+                .disabled(busy)
             } else {
-                ToastCenter.shared.success("签到成功 +\(r.reward ?? 0) 积分（连续 \(r.streak ?? 0) 天）")
+                Text("未获得")
+                    .font(.system(size: 12))
+                    .foregroundColor(.appMutedFg)
             }
-            checkin = try? await MashanglingAPI.shared.task.checkinStatus()
-            my = try? await MashanglingAPI.shared.points.my()
-        } catch { ToastCenter.shared.error(error.localizedDescription) }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 1))
     }
 
-    private func claimTask(_ key: String) async {
+    // 等级一览（30 级）
+    private var levelsTableCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("等级一览（30 级）")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundColor(.appForeground)
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+                ForEach(levelRows(), id: \.0) { row in
+                    let current = my?.level == row.0
+                    VStack(alignment: .leading, spacing: 0) {
+                        HStack(spacing: 6) {
+                            Text("Lv.\(row.0)")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(.appForeground)
+                            if current {
+                                Text("当前")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(.appPrimary)
+                            }
+                        }
+                        Text(row.1)
+                            .font(.system(size: 12))
+                            .foregroundColor(.appMutedFg)
+                        Text("累计 \(row.2.formatted(.number.grouping(.automatic))) 分")
+                            .font(.system(size: 11))
+                            .monospacedDigit()
+                            .foregroundColor(.appMutedFg)
+                            .padding(.top, 2)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(current ? Color.appPrimary.opacity(0.05) : Color.clear)
+                    .cornerRadius(4)
+                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(current ? Color.appPrimary : Color.appBorder, lineWidth: 1))
+                    .overlay(current ? RoundedRectangle(cornerRadius: 5).stroke(Color.appPrimary.opacity(0.3), lineWidth: 1).padding(-1) : nil)
+                }
+            }
+            .padding(.top, 16)
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.appCard)
+        .cornerRadius(5)
+        .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.appBorder, lineWidth: 1))
+    }
+
+    /// LEVEL_TABLE：从 1 级升到每一级所需的累计积分
+    private func levelRows() -> [(Int, String, Int)] {
+        (1...Levels.maxLevel).map { lv in
+            var cum = 0
+            for n in 1..<lv { cum += Levels.needForLevel(n) }
+            return (lv, Levels.band(of: lv), cum)
+        }
+    }
+
+    private func equip(key: String, currentlyEquipped: Bool) async {
         busy = true
         defer { busy = false }
         do {
-            let r = try await MashanglingAPI.shared.task.claim(taskKey: key)
-            ToastCenter.shared.success(r.already == true ? "已领取过" : "领取成功 +\(r.reward ?? 0) 积分")
-            tasks = try? await MashanglingAPI.shared.task.mine()
-            my = try? await MashanglingAPI.shared.points.my()
-        } catch { ToastCenter.shared.error(error.localizedDescription) }
-    }
-
-    private func equip(_ t: PointsMy.TitleItem) async {
-        busy = true
-        defer { busy = false }
-        do {
-            _ = try await MashanglingAPI.shared.points.equipTitle(t.equipped ? nil : t.key)
-            ToastCenter.shared.success(t.equipped ? "已卸下头衔" : "已佩戴头衔")
+            _ = try await MashanglingAPI.shared.points.equipTitle(currentlyEquipped ? nil : key)
+            ToastCenter.shared.success(currentlyEquipped ? "已取下头衔" : "已佩戴头衔")
             my = try? await MashanglingAPI.shared.points.my()
             await AuthManager.shared.checkAuth()
         } catch { ToastCenter.shared.error(error.localizedDescription) }
+    }
+}
+
+// MARK: - 积分记录（对应网页 PointRecords.tsx）
+struct PointRecordsView: View {
+    private let filters: [(key: String, label: String)] = [
+        ("all", "全部"), ("interact", "互动收入"), ("publish", "发布"), ("task", "任务/签到"),
+        ("browse", "浏览兑换"), ("heart", "心选橱窗"), ("farm", "农场储蓄"), ("spend", "支出"),
+    ]
+
+    @State private var kind = "all"
+    @State private var showChart = false
+    @State private var records: [PointLogRow]? = nil
+    @State private var my: PointsMy? = nil
+
+    private struct ChartPoint: Identifiable {
+        let id = UUID()
+        let time: String
+        let balance: Int
+        let delta: Int
+        let label: String
+    }
+
+    private var filtered: [PointLogRow] {
+        (records ?? []).filter { kind == "all" || $0.kind == kind }
+    }
+
+    private func sumFor(_ key: String) -> Int {
+        (records ?? []).filter { key == "all" || $0.kind == key }.reduce(0) { $0 + $1.delta }
+    }
+
+    /// 「全部」= 从当前余额倒推真实余额轨迹；分类 = 从 0 起净累计
+    private var chartData: [ChartPoint] {
+        let all = records ?? []
+        let isAll = kind == "all"
+        let cur = my?.points ?? 0
+        var balAfter = [Int](repeating: 0, count: all.count)
+        var acc = 0
+        for i in 0..<all.count {
+            balAfter[i] = cur - acc
+            acc += all[i].delta
+        }
+        var points: [ChartPoint] = []
+        var catBal = 0
+        if all.count > 0 {
+            for i in stride(from: all.count - 1, through: 0, by: -1) {
+                let r = all[i]
+                if !(kind == "all" || r.kind == kind) { continue }
+                catBal += r.delta
+                points.append(ChartPoint(time: Self.mdhm(r.createdAt), balance: isAll ? balAfter[i] : catBal, delta: r.delta, label: r.label))
+            }
+        }
+        return points
+    }
+
+    private static func mdhm(_ s: String?) -> String {
+        guard let d = DateFmt.parse(s) else { return "" }
+        let f = DateFormatter()
+        f.dateFormat = "MM-dd HH:mm"
+        return f.string(from: d)
+    }
+
+    private var kindLabel: String {
+        filters.first(where: { $0.key == kind })?.label ?? ""
+    }
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 8) {
+                    Image(systemName: "doc.text")
+                        .font(.system(size: 22))
+                        .foregroundColor(.appPrimary)
+                    Text("积分记录")
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundColor(.appForeground)
+                }
+                Text("展示最近 200 条积分增减（含来源），仅自己可见。")
+                    .font(.system(size: 12))
+                    .foregroundColor(.appMutedFg)
+                    .padding(.top, 4)
+
+                // 分类胶囊 + 图表切换
+                FlowLayout(spacing: 6) {
+                    ForEach(filters, id: \.key) { f in
+                        Button { kind = f.key } label: {
+                            HStack(spacing: 4) {
+                                Text(f.label)
+                                if (records?.count ?? 0) > 0 {
+                                    let s = sumFor(f.key)
+                                    Text(s >= 0 ? "+\(s)" : "\(s)")
+                                        .monospacedDigit()
+                                        .foregroundColor(kind == f.key ? Color.appPrimaryFg.opacity(0.8) : .appMutedFg)
+                                }
+                            }
+                            .font(.system(size: 12, weight: kind == f.key ? .medium : .regular))
+                            .foregroundColor(kind == f.key ? .appPrimaryFg : .appSecondaryFg)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 4)
+                            .background(kind == f.key ? Color.appPrimary : Color.appSecondary)
+                            .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    Button { showChart.toggle() } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "chart.xyaxis.line")
+                                .font(.system(size: 12))
+                            Text(showChart ? "查看列表" : "切换图表")
+                        }
+                        .font(.system(size: 12, weight: showChart ? .medium : .regular))
+                        .foregroundColor(showChart ? .appPrimaryFg : .appSecondaryFg)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 4)
+                        .background(showChart ? Color.appPrimary : Color.appSecondary)
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.top, 12)
+
+                if showChart {
+                    chartCard
+                        .padding(.top, 16)
+                }
+
+                if records == nil {
+                    VStack(spacing: 8) {
+                        ForEach(0..<3, id: \.self) { _ in
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color.appSecondary)
+                                .frame(height: 56)
+                        }
+                    }
+                    .padding(.top, 16)
+                } else if showChart {
+                    EmptyView()
+                } else if filtered.isEmpty {
+                    Text("该分类下还没有积分记录")
+                        .font(.system(size: 14))
+                        .foregroundColor(.appMutedFg)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 64)
+                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, style: StrokeStyle(lineWidth: 1, dash: [6])))
+                        .padding(.top, 16)
+                } else {
+                    VStack(spacing: 6) {
+                        ForEach(filtered) { r in
+                            recordRow(r)
+                        }
+                    }
+                    .padding(.top, 16)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 24)
+            .padding(.bottom, 24)
+        }
+        .background(Color.appBackground)
+        .navigationTitle("积分记录")
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            async let rec = try? MashanglingAPI.shared.points.records()
+            async let m = try? MashanglingAPI.shared.points.my()
+            records = await rec ?? []
+            my = await m
+        }
+        .refreshable {
+            async let rec = try? MashanglingAPI.shared.points.records()
+            async let m = try? MashanglingAPI.shared.points.my()
+            records = await rec ?? []
+            my = await m
+        }
+    }
+
+    private var chartCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(kind == "all"
+                 ? "积分余额曲线（全部；展示最近 \(filtered.count) 条记录）"
+                 : "分类净积分曲线（\(kindLabel)，从 0 起累计；展示最近 \(filtered.count) 条记录）")
+                .font(.system(size: 12))
+                .foregroundColor(.appMutedFg)
+                .padding(.bottom, 8)
+            if filtered.count < 2 {
+                Text("该分类下记录不足，无法生成曲线")
+                    .font(.system(size: 12))
+                    .foregroundColor(.appMutedFg)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 40)
+            } else {
+                Chart(chartData) { p in
+                    LineMark(
+                        x: .value("时间", p.time),
+                        y: .value("积分", p.balance)
+                    )
+                    .interpolationMethod(.catmullRom)
+                    .foregroundStyle(Color(h: 337, s: 80, l: 61))
+                    .lineStyle(StrokeStyle(lineWidth: 2))
+                }
+                .chartXAxis {
+                    AxisMarks { _ in
+                        AxisValueLabel()
+                            .font(.system(size: 10))
+                    }
+                }
+                .chartYAxis {
+                    AxisMarks { _ in
+                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [3, 3]))
+                            .foregroundStyle(Color.appBorder)
+                        AxisValueLabel()
+                            .font(.system(size: 10))
+                    }
+                }
+                .frame(height: 208)
+            }
+        }
+        .padding(16)
+        .background(Color.appCard)
+        .cornerRadius(4)
+        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 1))
+    }
+
+    @ViewBuilder
+    private func recordRow(_ r: PointLogRow) -> some View {
+        let earn = r.delta > 0
+        let content = HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(earn ? Color.fixEmerald600.opacity(0.1) : Color.fixRed500.opacity(0.1))
+                Image(systemName: earn ? "arrow.up.right" : "arrow.down.right")
+                    .font(.system(size: 14))
+                    .foregroundColor(earn ? .fixEmerald600 : .fixRed500)
+            }
+            .frame(width: 32, height: 32)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(r.label)
+                    .font(.system(size: 14))
+                    .foregroundColor(.appForeground)
+                    .lineLimit(1)
+                Text(DateFmt.zhFull(r.createdAt))
+                    .font(.system(size: 11))
+                    .foregroundColor(.appMutedFg)
+            }
+            Spacer()
+            Text(earn ? "+\(r.delta)" : "\(r.delta)")
+                .font(.system(size: 14, weight: .bold))
+                .monospacedDigit()
+                .foregroundColor(earn ? .fixEmerald600 : .fixRed500)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color.appCard)
+        .cornerRadius(4)
+        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 1))
+
+        if let sid = r.showcaseId {
+            NavigationLink(destination: ShowcaseDetailView(showcaseId: sid)) {
+                content
+            }
+            .buttonStyle(.plain)
+        } else {
+            content
+        }
     }
 }

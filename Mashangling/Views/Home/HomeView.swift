@@ -378,7 +378,7 @@ struct AvatarMenuPanel: View {
         case .history:      BrowseHistoryView()
         case .comments:     MyCommentsView()
         case .points:       PointsView()
-        case .pointRecords: PointsView(initialTab: 1)
+        case .pointRecords: PointRecordsView()
         case .shop:         ShopView()
         case .cards:        CardStudioView()
         case .cardPlaza:    CardPlazaView()

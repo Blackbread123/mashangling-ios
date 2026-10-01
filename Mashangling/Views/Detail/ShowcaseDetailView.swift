@@ -363,7 +363,7 @@ struct ShowcaseDetailView: View {
             if d.isMine == true, let qty = d.quantity {
                 hairline {
                     let rem = d.remaining ?? 0
-                    let color: Color = d.isFullyClaimed == true ? .fixRed500 : .twEmerald600
+                    let color: Color = d.isFullyClaimed == true ? .fixRed500 : .fixEmerald600
                     (Text("余量：") +
                      Text("\(rem)/\(qty)").fontWeight(.semibold).foregroundColor(color) +
                      Text(d.isFullyClaimed == true ? "（已领完）" : "（已领 \(qty - rem) 份）"))
@@ -575,7 +575,7 @@ struct ShowcaseDetailView: View {
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
                         .frame(height: 36)
-                        .background(Color.twAmber500)
+                        .background(Color.fixAmber500)
                         .clipShape(Capsule())
                         .opacity(d.addressSentByMe == true ? 0.6 : 1)
                     }
@@ -617,7 +617,7 @@ struct ShowcaseDetailView: View {
         } else if d.claimMode == "points" {
             VStack(alignment: .leading, spacing: 0) {
                 fullPill(icon: "centsign.circle", label: busy ? "解锁中…" : "支付 \(d.pointCost ?? 0) 积分解锁",
-                         bg: .twAmber500, fg: .white, enabled: !busy) {
+                         bg: .fixAmber500, fg: .white, enabled: !busy) {
                     guard authManager.isAuthenticated else { showLogin = true; return }
                     Task { await unlockClaim() }
                 }
@@ -769,7 +769,7 @@ struct ShowcaseDetailView: View {
                     label: (claimedByMe ? "已领到 ✓" : "我领到了") + ((d.claimCount ?? 0) > 0 ? " · \(d.claimCount ?? 0)" : ""),
                     tint: claimedByMe ? .fixEmerald700 : .appForeground,
                     bg: claimedByMe ? .fixEmerald100 : .appCard,
-                    brd: claimedByMe ? .twEmerald600 : .appBorder,
+                    brd: claimedByMe ? .fixEmerald600 : .appBorder,
                     active: claimedByMe) { Task { await toggleClaim() } }
             // 我想领 / 收到的想要
             if d.isMine == true {
@@ -998,7 +998,7 @@ struct ShowcaseDetailView: View {
                             } label: {
                                 Image(systemName: copiedCodeId == item.id ? "checkmark" : "doc.on.doc")
                                     .font(.system(size: 16))
-                                    .foregroundColor(copiedCodeId == item.id ? .twEmerald600 : .appMutedFg)
+                                    .foregroundColor(copiedCodeId == item.id ? .fixEmerald600 : .appMutedFg)
                             }
                             .buttonStyle(.plain)
                             if d.isMine == true {
