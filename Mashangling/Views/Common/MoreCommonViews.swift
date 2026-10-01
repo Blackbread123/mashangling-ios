@@ -179,19 +179,35 @@ struct ReportSheet: View {
     @State private var reason = ""
     @State private var sending = false
 
+    /// 对应网页 TYPE_LABEL
+    private var typeLabel: String {
+        switch targetType {
+        case "showcase": return "橱窗"
+        case "tag": return "标签"
+        case "cardPost": return "卡片作品"
+        case "repost": return "返图"
+        case "cardComment": return "评论"
+        case "dm": return "私信"
+        default: return "内容"
+        }
+    }
+
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 14) {
-                Text("请描述举报原因，管理员会尽快处理。")
-                    .font(.system(size: 12))
-                    .foregroundColor(.appMutedFg)
-                TextField("举报原因（至少 2 个字）…", text: $reason, axis: .vertical)
+                TextField("请说明原因，例如：盗图 / 未授权 / 违规盈利 / 内容不当…", text: $reason, axis: .vertical)
                     .font(.system(size: 14))
-                    .lineLimit(3...6)
+                    .lineLimit(4...8)
                     .padding(10)
                     .background(Color.appInput)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                     .onChange(of: reason) { v in if v.count > 500 { reason = String(v.prefix(500)) } }
+                if targetType == "repost" || targetType == "cardComment" || targetType == "dm" {
+                    Text("举报成立后管理员会删除该内容并封禁发布者账号。")
+                        .font(.system(size: 11))
+                        .lineSpacing(5)
+                        .foregroundColor(.appMutedFg)
+                }
                 Button {
                     Task { await submit() }
                 } label: {
@@ -201,14 +217,14 @@ struct ReportSheet: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 11)
                         .background(Color.appPrimary)
-                        .clipShape(Capsule())
+                        .clipShape(RoundedRectangle(cornerRadius: 2))
                 }
                 .disabled(reason.trimmingCharacters(in: .whitespaces).count < 2 || sending)
                 Spacer()
             }
             .padding(20)
             .background(Color.appBackground)
-            .navigationTitle("举报")
+            .navigationTitle("举报\(typeLabel)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {

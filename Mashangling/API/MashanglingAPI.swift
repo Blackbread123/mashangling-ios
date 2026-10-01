@@ -273,9 +273,11 @@ actor MashanglingAPI {
     struct SoldoutService {
         let client: APIClient
 
-        func mark(showcaseId: Int) async throws -> Bool {
-            let r: MarkResult = try await client.post("soldout.mark", input: ["showcaseId": showcaseId])
-            return r.ok ?? false
+        struct MarkResult: Codable { let ok: Bool?; let mailed: Bool? }
+
+        /// 标记「没有了」→ 返回是否给发布人发了邮件（对应网页 toast 两种文案）
+        func mark(showcaseId: Int) async throws -> MarkResult {
+            try await client.post("soldout.mark", input: ["showcaseId": showcaseId])
         }
 
         func mineFor(showcaseId: Int) async throws -> Bool {
@@ -287,8 +289,6 @@ actor MashanglingAPI {
         func received() async throws -> [SoldoutReceivedRow] {
             try await client.get("soldout.received")
         }
-
-        struct MarkResult: Codable { let ok: Bool?; let mailed: Bool? }
     }
 
     // MARK: - 返图（repost.*）
