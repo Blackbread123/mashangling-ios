@@ -209,9 +209,9 @@ struct ShowcaseCardView: View {
                 }
                 .padding(.top, 4)
 
-                // tags（最多 3 个）
+                // tags（最多 3 个；网页 flex-wrap，胶囊不压缩）
                 if let tags = item.tags, !tags.isEmpty {
-                    HStack(spacing: 4) {
+                    FlowLayout(spacing: 4) {
                         ForEach(tags.prefix(3)) { t in
                             Text(t.name)
                                 .font(.system(size: 11))
@@ -219,7 +219,7 @@ struct ShowcaseCardView: View {
                                 .padding(.horizontal, 8).padding(.vertical, 2)
                                 .background(Color.appSecondary)
                                 .cornerRadius(10)
-                                .lineLimit(1)
+                                .fixedSize()
                         }
                     }
                     .padding(.top, 6)

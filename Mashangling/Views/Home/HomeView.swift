@@ -84,13 +84,11 @@ struct HomeView: View {
             .navigationTitle("")
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Text("码上领")
-                        .font(.system(size: 20, weight: .bold))
-                        .foregroundColor(.appForeground)
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    HStack(spacing: 6) {
-                        // 裸搜索图标（网页：h-9 w-9 rounded-full 无底色）
+                    HStack(spacing: 8) {
+                        Text("码上领")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(.appForeground)
+                        // 裸搜索图标（网页：logo 右边，h-9 w-9 rounded-full 无底色）
                         Button {
                             withAnimation(.easeOut(duration: 0.15)) { mobileSearch.toggle() }
                         } label: {
@@ -101,9 +99,12 @@ struct HomeView: View {
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        // 头像 + 未读角标，点出下拉菜单
-                        if let me = authManager.currentUser {
-                            Button { showAvatarMenu.toggle() } label: {
+                    }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    // 头像 + 未读角标，点出下拉菜单
+                    if let me = authManager.currentUser {
+                        Button { showAvatarMenu.toggle() } label: {
                                 AvatarView(path: me.avatar, name: me.name ?? "U", size: 36)
                                     .overlay(alignment: .topTrailing) {
                                         if unreadManager.totalUnread > 0 {
@@ -133,7 +134,6 @@ struct HomeView: View {
                             }
                             .buttonStyle(.plain)
                         }
-                    }
                 }
             }
             .navigationDestination(isPresented: $pushSearch) {

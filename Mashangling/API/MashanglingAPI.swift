@@ -512,7 +512,7 @@ actor MashanglingAPI {
         }
 
         func unreadCount() async throws -> Int {
-            let r: UnreadCount = try await client.get("message.unreadCount")
+            let r: UnreadCount = try await client.get("message.unreadCount", cacheable: false)
             return r.count
         }
 
@@ -1070,7 +1070,7 @@ actor MashanglingAPI {
 
         /// 导航角标
         func navBadges() async throws -> NavBadges {
-            try await client.get("address.navBadges")
+            try await client.get("address.navBadges", cacheable: false)
         }
 
         /// 我的快递（领取人视角）

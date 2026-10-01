@@ -71,6 +71,15 @@ actor APIClient {
         set { UserDefaults.standard.set(newValue, forKey: "kimi_sid") }
     }
 
+    // MARK: GET 内存缓存（30 秒，返回页面秒开；任何写操作后整体失效）
+    private var cache: [String: (data: Data, at: Date)] = [:]
+    private let cacheTTL: TimeInterval = 30
+
+    private func cached(_ key: String) -> Data? {
+        guard let hit = cache[key], Date().timeIntervalSince(hit.at) < cacheTTL else { return nil }
+        return hit.data
+    }
+
     func setToken(_ token: String?) {
         authToken = token
     }
@@ -80,7 +89,8 @@ actor APIClient {
     // MARK: - 通用 GET（对应 tRPC query）
     func get<T: Decodable>(
         _ procedure: String,
-        input: [String: Any]? = nil
+        input: [String: Any]? = nil,
+        cacheable: Bool = true
     ) async throws -> T {
         var urlStr = "\(baseURL)/api/trpc/\(procedure)"
         // tRPC 要求 input 包一层 {"json": ...}，即使为空也要传
@@ -90,6 +100,11 @@ actor APIClient {
         let encoded = jsonStr.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         urlStr += "?input=\(encoded)"
         guard let url = URL(string: urlStr) else { throw APIError.server("无效 URL") }
+
+        if cacheable, let hit = cached(urlStr) {
+            let decoded = try JSONDecoder().decode(TRPCResponse<T>.self, from: hit)
+            if let result = decoded.result?.data?.json { return result }
+        }
 
         var req = URLRequest(url: url)
         req.httpMethod = "GET"
@@ -101,6 +116,7 @@ actor APIClient {
 
         if http.statusCode == 401 { throw APIError.unauthorized }
 
+        if cacheable { cache[urlStr] = (data, Date()) }
         let decoded = try JSONDecoder().decode(TRPCResponse<T>.self, from: data)
         if let err = decoded.error?.json {
             throw APIError.server(err.message ?? "未知错误")
@@ -127,6 +143,7 @@ actor APIClient {
 
         let body: [String: Any] = ["json": input]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        cache.removeAll()   // 写操作后读缓存整体失效
 
         let (data, response) = try await session.data(for: req)
         guard let http = response as? HTTPURLResponse else { throw APIError.server("无效响应") }
@@ -175,6 +192,7 @@ actor APIClient {
         body.append("\r\n".data(using: .utf8)!)
         body.append("--\(boundary)--\r\n".data(using: .utf8)!)
         req.httpBody = body
+        cache.removeAll()   // 上传同样失效缓存
 
         let (data, _) = try await session.data(for: req)
         let decoded = try JSONDecoder().decode(TRPCResponse<T>.self, from: data)

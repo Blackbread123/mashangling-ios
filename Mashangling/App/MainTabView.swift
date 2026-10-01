@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 
 // MARK: - 主 Tab 视图（逐行复刻网页 TabBar.tsx）
 // 网页移动端底栏：通栏 h-14、顶部分隔线 border-border/60、bg-background/95 + 毛玻璃；
@@ -58,6 +59,10 @@ struct MainTabView: View {
         .onAppear { unreadManager.startPolling() }
         .onReceive(NotificationCenter.default.publisher(for: .mslSwitchTab)) { n in
             if let i = n.object as? Int { tab = i }
+        }
+        // 点击推送通知 → 落到消息页
+        .onReceive(NotificationCenter.default.publisher(for: .didReceivePush)) { _ in
+            if authManager.isAuthenticated { tab = 3 }
         }
     }
 
@@ -150,9 +155,44 @@ class UnreadManager: ObservableObject {
         guard AuthManager.shared.isAuthenticated else { return }
         do {
             let count = try await MashanglingAPI.shared.message.unreadCount()
+            let previous = totalUnread
             totalUnread = count
+            // 未读数增加 → 拉最新未读消息发 App 本地推送
+            if count > previous { await notifyNewMessages() }
         } catch {
             // 静默失败
+        }
+    }
+
+    /// 对新到的站内信发系统通知（网页只有邮件；App 用本地推送实现「APP推送」）
+    private func notifyNewMessages() async {
+        let center = UNUserNotificationCenter.current()
+        let settings = try? await center.notificationSettings()
+        guard settings?.authorizationStatus == .authorized else { return }
+        guard let list = try? await MashanglingAPI.shared.message.list(type: "all") else { return }
+        let defaults = UserDefaults.standard
+        let key = "msl-last-notified-msg-id"
+        var lastId = defaults.integer(forKey: key)
+        if lastId == 0 {
+            // 首次运行：以当前最大 id 为基线，不轰炸历史消息
+            lastId = list.map(\.id).max() ?? 0
+            defaults.set(lastId, forKey: key)
+            return
+        }
+        let fresh = list.filter { !$0.read && $0.id > lastId }.sorted { $0.id < $1.id }
+        for m in fresh {
+            let content = UNMutableNotificationContent()
+            content.title = m.title
+            content.body = m.content ?? ""
+            content.sound = .default
+            content.userInfo = ["type": m.type, "messageId": m.id,
+                                "link": m.link ?? "", "showcaseId": m.showcaseId ?? 0,
+                                "fromUserId": m.fromUserId ?? 0]
+            let req = UNNotificationRequest(identifier: "msl-msg-\(m.id)", content: content, trigger: nil)
+            try? await center.add(req)
+        }
+        if let maxId = fresh.map(\.id).max() {
+            defaults.set(maxId, forKey: key)
         }
     }
 

@@ -208,7 +208,7 @@ struct ShareCardCanvas: View {
         let scale = width / Self.designW
         return self
             .scaleEffect(scale, anchor: .topLeading)
-            .frame(width: width, height: width * Self.designH / Self.designW)
+            .frame(width: width, height: width * Self.designH / Self.designW, alignment: .topLeading)
             .clipped()
     }
 }
@@ -218,20 +218,24 @@ struct CardThemeThumbnailView: View {
     let config: CardConfig
 
     var body: some View {
-        GeometryReader { geo in
-            ShareCardCanvas(
-                title: "示例橱窗标题",
-                cover: nil,
-                platformLabel: "外部无料",
-                authorName: "创作者",
-                tags: ["纸制品", "同人"],
-                theme: config
-            )
-            .scaleEffect(geo.size.width / ShareCardCanvas.designW, anchor: .topLeading)
-            .frame(width: geo.size.width, height: geo.size.width * ShareCardCanvas.designH / ShareCardCanvas.designW)
-            .clipped()
-        }
-        .aspectRatio(ShareCardCanvas.designW / ShareCardCanvas.designH, contentMode: .fit)
+        // 用 Color.clear 确立 3:4 尺寸（GeometryReader 直接套 aspectRatio 在网格/列表里会拿不到高度，导致整卡空白）
+        Color.clear
+            .aspectRatio(ShareCardCanvas.designW / ShareCardCanvas.designH, contentMode: .fit)
+            .overlay {
+                GeometryReader { geo in
+                    ShareCardCanvas(
+                        title: "示例橱窗标题",
+                        cover: nil,
+                        platformLabel: "外部无料",
+                        authorName: "创作者",
+                        tags: ["纸制品", "同人"],
+                        theme: config
+                    )
+                    .scaleEffect(geo.size.width / ShareCardCanvas.designW, anchor: .topLeading)
+                    .frame(width: geo.size.width, height: geo.size.width * ShareCardCanvas.designH / ShareCardCanvas.designW, alignment: .topLeading)
+                    .clipped()
+                }
+            }
     }
 }
 

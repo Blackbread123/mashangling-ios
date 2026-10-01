@@ -36,6 +36,7 @@ struct MashanglingApp: App {
         let navAppearance = UINavigationBarAppearance()
         navAppearance.configureWithOpaqueBackground()
         navAppearance.backgroundColor = UIColor(palette.background)
+        navAppearance.shadowColor = .clear   // 网页顶栏无分界线的
         navAppearance.titleTextAttributes = [
             .foregroundColor: UIColor(palette.foreground),
             .font: UIFont.systemFont(ofSize: 17, weight: .semibold)

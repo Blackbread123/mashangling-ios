@@ -434,10 +434,14 @@ struct CardStudioView: View {
                 .font(.system(size: 14, weight: .medium))
                 .foregroundColor(.appForeground)
 
-            GeometryReader { geo in
-                let w = geo.size.width
-                let h = w * ShareCardCanvas.designH / ShareCardCanvas.designW
-                ZStack(alignment: .topLeading) {
+            // 用 Color.clear 确立 3:4 尺寸，GeometryReader 放 overlay 里才能拿到真实宽度
+            Color.clear
+                .aspectRatio(ShareCardCanvas.designW / ShareCardCanvas.designH, contentMode: .fit)
+                .overlay {
+                    GeometryReader { geo in
+                        let w = geo.size.width
+                        let h = w * ShareCardCanvas.designH / ShareCardCanvas.designW
+                        ZStack(alignment: .topLeading) {
                     ShareCardCanvas(
                         title: "示例橱窗标题 · 同人吧唧三件套",
                         cover: nil,
@@ -447,7 +451,7 @@ struct CardStudioView: View {
                         theme: config
                     )
                     .scaleEffect(w / ShareCardCanvas.designW, anchor: .topLeading)
-                    .frame(width: w, height: h)
+                    .frame(width: w, height: h, alignment: .topLeading)
                     .clipped()
 
                     // 可拖动热区（虚线框，与素材位置对应）
@@ -473,10 +477,10 @@ struct CardStudioView: View {
                     }
                 }
                 .frame(width: w, height: h)
-            }
-            .aspectRatio(ShareCardCanvas.designW / ShareCardCanvas.designH, contentMode: .fit)
-            .cornerRadius(5)
-            .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.appBorder, lineWidth: 0.5))
+                    }
+                }
+                .cornerRadius(5)
+                .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.appBorder, lineWidth: 0.5))
 
             Button { exportPreview() } label: {
                 HStack(spacing: 4) {

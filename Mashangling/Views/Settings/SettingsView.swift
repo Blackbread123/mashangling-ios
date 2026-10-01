@@ -29,6 +29,7 @@ struct SettingsView: View {
     @State private var bindPassword = ""
     @State private var binding = false
     @State private var showDeleteAccount = false
+    @State private var emailOff = UserDefaults.standard.bool(forKey: "msl-email-notify-off")
 
     private var nameDirty: Bool {
         name.trimmingCharacters(in: .whitespaces) != (d?.name ?? "")
@@ -176,12 +177,35 @@ struct SettingsView: View {
     private var notifyEmailSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             sectionLabel("发信邮箱")
+            // 邮件总开关（App 侧新增）：关闭后清空发信邮箱，不再发邮件，App 推送不受影响
+            HStack {
+                Text("邮件通知")
+                    .font(.system(size: 14))
+                    .foregroundColor(.appForeground)
+                Spacer()
+                Toggle("", isOn: Binding(
+                    get: { !emailOff },
+                    set: { on in Task { await setEmailNotify(on) } }
+                ))
+                .labelsHidden()
+                .tint(.appPrimary)
+                .disabled(savingEmail)
+            }
+            .padding(.bottom, 8)
+            if emailOff {
+                Text("已关闭邮件通知；站内消息仍会通过 App 推送提醒你。")
+                    .font(.system(size: 11))
+                    .foregroundColor(.appMutedFg)
+                    .padding(.bottom, 6)
+            }
             HStack(spacing: 8) {
                 AppTextField(
                     text: $notifyEmail,
                     placeholder: (d?.email?.isEmpty == false) ? d!.email! : "输入接收通知的邮箱",
                     keyboard: .emailAddress
                 )
+                .disabled(emailOff)
+                .opacity(emailOff ? 0.5 : 1)
                 Button { Task { await saveNotifyEmail() } } label: {
                     Text(savingEmail ? "保存中…" : "保存")
                         .font(.system(size: 14, weight: .medium))
@@ -191,8 +215,8 @@ struct SettingsView: View {
                         .background(Color.appPrimary)
                         .clipShape(Capsule())
                 }
-                .disabled(!emailDirty || savingEmail)
-                .opacity(!emailDirty || savingEmail ? 0.5 : 1)
+                .disabled(emailOff || !emailDirty || savingEmail)
+                .opacity(emailOff || !emailDirty || savingEmail ? 0.5 : 1)
             }
             (Text("站内通知邮件（补码提醒、每晚未读摘要等）会发到这个邮箱。")
                 .foregroundColor(.appMutedFg)
@@ -555,6 +579,34 @@ struct SettingsView: View {
             ToastCenter.shared.success("昵称已更新")
             d = try? await MashanglingAPI.shared.settings.get()
             await AuthManager.shared.checkAuth()
+        } catch { ToastCenter.shared.error(error.localizedDescription) }
+    }
+
+    /// 邮件通知总开关：关=清空发信邮箱（本地暂存以便恢复）；开=恢复暂存邮箱
+    private func setEmailNotify(_ on: Bool) async {
+        savingEmail = true
+        defer { savingEmail = false }
+        let defaults = UserDefaults.standard
+        do {
+            if on {
+                let stash = defaults.string(forKey: "msl-notify-email-stash") ?? ""
+                _ = try await MashanglingAPI.shared.settings.updateNotifyEmail(stash)
+                defaults.removeObject(forKey: "msl-notify-email-stash")
+                defaults.set(false, forKey: "msl-email-notify-off")
+                emailOff = false
+                ToastCenter.shared.success("已开启邮件通知")
+            } else {
+                let current = notifyEmail.trimmingCharacters(in: .whitespaces).isEmpty
+                    ? (d?.notifyEmail ?? "")
+                    : notifyEmail.trimmingCharacters(in: .whitespaces)
+                if !current.isEmpty { defaults.set(current, forKey: "msl-notify-email-stash") }
+                _ = try await MashanglingAPI.shared.settings.updateNotifyEmail("")
+                defaults.set(true, forKey: "msl-email-notify-off")
+                emailOff = true
+                ToastCenter.shared.success("已关闭邮件通知，App 推送不受影响")
+            }
+            d = try? await MashanglingAPI.shared.settings.get()
+            notifyEmail = d?.notifyEmail ?? ""
         } catch { ToastCenter.shared.error(error.localizedDescription) }
     }
 
