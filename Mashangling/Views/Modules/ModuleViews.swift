@@ -3,211 +3,197 @@ import Charts
 
 // MARK: - 领取申请（发布者审批，对应网页 Claims.tsx）
 struct ClaimsView: View {
-    /// 详情页胶囊直达：0=领取申请 1=我想要 2=补货提醒
-    var initialTab: Int = 0
-
-    @State private var rows: [ClaimRow] = []
-    @State private var requests: [RequestReceivedRow] = []
-    @State private var soldouts: [SoldoutReceivedRow] = []
-    @State private var tab = 0
-    @State private var loading = true
+    @State private var rows: [ClaimRow]? = nil
     @State private var busy = false
+    @State private var previewImage: String? = nil
+
+    private var pending: [ClaimRow] { (rows ?? []).filter { $0.status == "pending" } }
+    private var resolved: [ClaimRow] { (rows ?? []).filter { $0.status != "pending" } }
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                tabBtn(0, "领取申请 \(rows.filter { $0.status == "pending" }.count)")
-                tabBtn(1, "我想要 \(requests.count)")
-                tabBtn(2, "补货提醒 \(soldouts.count)")
-            }
-            .padding(3)
-            .background(Color.appSecondary)
-            .cornerRadius(12)
-            .padding(.horizontal, 16)
-            .padding(.top, 10)
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 8) {
+                    Text("领取申请")
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundColor(.appForeground)
+                    if !pending.isEmpty {
+                        Text("\(pending.count) 条待审核")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.appPrimaryFg)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 2)
+                            .background(Color.appPrimary)
+                            .clipShape(Capsule())
+                    }
+                }
+                Text("批准或拒绝他人对你橱窗的领取申请，结果会通过站内信通知申请者。")
+                    .font(.system(size: 14))
+                    .foregroundColor(.appMutedFg)
+                    .padding(.top, 4)
 
-            Group {
-                if loading {
-                    LoadingView()
-                    Spacer()
-                } else if tab == 0 {
-                    claimsList
-                } else if tab == 1 {
-                    requestList
+                if rows == nil {
+                    VStack(spacing: 12) {
+                        ForEach(0..<2, id: \.self) { _ in
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color.appSecondary)
+                                .frame(height: 96)
+                        }
+                    }
+                    .padding(.top, 24)
+                } else if (rows ?? []).isEmpty {
+                    Text("暂无领取申请")
+                        .font(.system(size: 14))
+                        .foregroundColor(.appMutedFg)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 64)
+                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, style: StrokeStyle(lineWidth: 1, dash: [6])))
+                        .padding(.top, 24)
                 } else {
-                    soldoutList
+                    VStack(spacing: 10) {
+                        ForEach(pending + resolved) { c in
+                            claimCard(c)
+                        }
+                    }
+                    .padding(.top, 24)
                 }
             }
+            .padding(.horizontal, 16)
+            .padding(.top, 24)
+            .padding(.bottom, 24)
         }
         .background(Color.appBackground)
-        .navigationTitle("领取与申请")
+        .navigationTitle("领取申请")
         .navigationBarTitleDisplayMode(.inline)
-        .task { tab = initialTab; await load() }
-    }
-
-    private func tabBtn(_ idx: Int, _ title: String) -> some View {
-        Button { tab = idx } label: {
-            Text(title)
-                .font(.system(size: 12, weight: tab == idx ? .semibold : .regular))
-                .foregroundColor(tab == idx ? .appForeground : .appMutedFg)
-                .lineLimit(1)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .background(tab == idx ? Color.appCard : Color.clear)
-                .cornerRadius(10)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var claimsList: some View {
-        Group {
-            if rows.isEmpty {
-                EmptyStateView(icon: "checkmark.rectangle", title: "暂无领取申请")
-                Spacer()
-            } else {
-                List(rows) { r in
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            NavigationLink(destination: ShowcaseDetailView(showcaseId: r.showcaseId ?? 0)) {
-                                Text(r.showcaseTitle ?? "")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundColor(.appPrimary)
-                                    .lineLimit(1)
-                            }
-                            Spacer()
-                            Text(DateFmt.short(r.createdAt))
-                                .font(.system(size: 10))
-                                .foregroundColor(.appMutedFg)
-                        }
-                        HStack(spacing: 6) {
-                            Text("申请人：\(r.applicantName ?? "")")
-                                .font(.system(size: 12))
-                                .foregroundColor(.appForeground)
-                            if let note = r.note, !note.isEmpty {
-                                Text("备注：\(note)")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.appMutedFg)
-                                    .lineLimit(1)
-                            }
-                        }
-                        if let img = r.credentialImage, !img.isEmpty {
-                            AppImage(path: img)
-                                .aspectRatio(contentMode: .fit)
-                                .frame(maxWidth: 200, maxHeight: 160)
-                                .cornerRadius(8)
-                        }
-                        if r.status == "pending" {
-                            HStack(spacing: 10) {
-                                Button { Task { await resolve(r, action: "approve") } } label: {
-                                    Text("通过")
-                                        .font(.system(size: 12, weight: .medium))
-                                        .foregroundColor(.appPrimaryFg)
-                                        .padding(.horizontal, 18)
-                                        .padding(.vertical, 7)
-                                        .background(Color.appPrimary)
-                                        .clipShape(Capsule())
-                                }
-                                .disabled(busy)
-                                Button { Task { await resolve(r, action: "reject") } } label: {
-                                    Text("拒绝")
-                                        .font(.system(size: 12))
-                                        .foregroundColor(.appForeground)
-                                        .padding(.horizontal, 18)
-                                        .padding(.vertical, 7)
-                                        .overlay(Capsule().stroke(Color.appBorder, lineWidth: 1))
-                                }
-                                .disabled(busy)
-                            }
-                        } else {
-                            MiniBadge(
-                                text: r.status == "approved" ? "已通过" : "已拒绝",
-                                fg: r.status == "approved" ? .appEmeraldFg : .appMutedFg,
-                                bg: r.status == "approved" ? .appEmeraldBg : .appSecondary
-                            )
-                        }
-                    }
-                    .padding(12)
-                    .background(Color.appCard)
-                    .cornerRadius(4)
-                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 0.5))
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16))
-                }
-                .listStyle(.plain)
-                .refreshable { await load() }
+        .task { rows = (try? await MashanglingAPI.shared.claim.received()) ?? [] }
+        .refreshable { rows = (try? await MashanglingAPI.shared.claim.received()) ?? [] }
+        .fullScreenCover(isPresented: Binding(
+            get: { previewImage != nil },
+            set: { if !$0 { previewImage = nil } }
+        )) {
+            if let img = previewImage {
+                ImageViewerCover(path: img)
             }
         }
     }
 
-    private var requestList: some View {
-        Group {
-            if requests.isEmpty {
-                EmptyStateView(icon: "hand.raised", title: "暂无人点「我想要」")
+    private func claimCard(_ c: ClaimRow) -> some View {
+        let isPending = c.status == "pending"
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 12) {
+                NavigationLink(destination: ShowcaseDetailView(showcaseId: c.showcaseId ?? 0)) {
+                    Text(c.showcaseTitle ?? "")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.appPrimary)
+                        .lineLimit(1)
+                }
+                NavigationLink(destination: ProfileView(userId: c.applicantId ?? 0)) {
+                    Text("\(c.applicantName ?? "未知用户") 申请领取")
+                        .font(.system(size: 14))
+                        .foregroundColor(.appMutedFg)
+                        .lineLimit(1)
+                }
                 Spacer()
-            } else {
-                List(requests) { r in
-                    HStack(spacing: 8) {
-                        Text(r.requesterName ?? "")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.appForeground)
-                        Text("想要")
-                            .font(.system(size: 12))
-                            .foregroundColor(.appMutedFg)
-                        NavigationLink(destination: ShowcaseDetailView(showcaseId: r.showcaseId ?? 0)) {
-                            Text(r.showcaseTitle ?? "")
+                statusBadge(c.status)
+                Text(DateFmt.zhFull(c.createdAt))
+                    .font(.system(size: 12))
+                    .foregroundColor(.appMutedFg)
+            }
+            if let note = c.note, !note.isEmpty {
+                Text(note)
+                    .font(.system(size: 12))
+                    .lineSpacing(4)
+                    .foregroundColor(.appForeground.opacity(0.8))
+                    .padding(.top, 8)
+            }
+            if let img = c.credentialImage, !img.isEmpty {
+                Button { previewImage = img } label: {
+                    AppImage(path: img, contentMode: .fit)
+                        .frame(maxHeight: 128)
+                        .cornerRadius(3)
+                        .overlay(RoundedRectangle(cornerRadius: 3).stroke(Color.appBorder, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 8)
+            }
+            if isPending {
+                HStack(spacing: 8) {
+                    Button { Task { await resolve(c, action: "approve") } } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark")
                                 .font(.system(size: 12))
-                                .foregroundColor(.appPrimary)
-                                .lineLimit(1)
+                            Text("批准解锁")
                         }
-                        Spacer()
-                        Text(DateFmt.short(r.createdAt))
-                            .font(.system(size: 10))
-                            .foregroundColor(.appMutedFg)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.appPrimaryFg)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.appPrimary)
+                        .clipShape(Capsule())
+                    }
+                    .disabled(busy)
+                    Button { Task { await resolve(c, action: "reject") } } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 12))
+                            Text("拒绝")
+                        }
+                        .font(.system(size: 12))
+                        .foregroundColor(.appForeground)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .overlay(Capsule().stroke(Color.appBorder, lineWidth: 1))
+                    }
+                    .disabled(busy)
+                    NavigationLink(destination: DmThreadView(peerId: c.applicantId ?? 0, peerName: c.applicantName ?? "")) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "message")
+                                .font(.system(size: 12))
+                            Text("私信 TA")
+                        }
+                        .font(.system(size: 12))
+                        .foregroundColor(.appForeground)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
                     }
                 }
-                .listStyle(.plain)
+                .padding(.top, 12)
             }
         }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(isPending ? Color.appPrimary.opacity(0.03) : Color.appCard)
+        .cornerRadius(4)
+        .overlay(RoundedRectangle(cornerRadius: 4).stroke(isPending ? Color.appPrimary.opacity(0.4) : Color.appBorder, lineWidth: 1))
     }
 
-    private var soldoutList: some View {
-        Group {
-            if soldouts.isEmpty {
-                EmptyStateView(icon: "bell", title: "暂无补货提醒")
-                Spacer()
-            } else {
-                List(soldouts) { r in
-                    HStack(spacing: 8) {
-                        Text(r.markerName ?? "")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.appForeground)
-                        Text("反馈没有了")
-                            .font(.system(size: 12))
-                            .foregroundColor(.appMutedFg)
-                        NavigationLink(destination: ShowcaseDetailView(showcaseId: r.showcaseId ?? 0)) {
-                            Text(r.showcaseTitle ?? "")
-                                .font(.system(size: 12))
-                                .foregroundColor(.appPrimary)
-                                .lineLimit(1)
-                        }
-                        Spacer()
-                        Text(DateFmt.short(r.createdAt))
-                            .font(.system(size: 10))
-                            .foregroundColor(.appMutedFg)
-                    }
-                }
-                .listStyle(.plain)
-            }
+    @ViewBuilder
+    private func statusBadge(_ status: String?) -> some View {
+        if status == "pending" {
+            Text("待审核")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(.appPrimary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 2)
+                .background(Color.appPrimary.opacity(0.1))
+                .clipShape(Capsule())
+        } else if status == "approved" {
+            Text("已通过")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(.fixEmerald700)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 2)
+                .background(Color.fixEmerald100)
+                .clipShape(Capsule())
+        } else {
+            Text("未通过")
+                .font(.system(size: 12))
+                .foregroundColor(.appMutedFg)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 2)
+                .background(Color.appSecondary)
+                .clipShape(Capsule())
         }
-    }
-
-    private func load() async {
-        loading = true
-        rows = (try? await MashanglingAPI.shared.claim.received()) ?? []
-        requests = (try? await MashanglingAPI.shared.request.received()) ?? []
-        soldouts = (try? await MashanglingAPI.shared.soldout.received()) ?? []
-        loading = false
     }
 
     private func resolve(_ r: ClaimRow, action: String) async {
@@ -215,8 +201,8 @@ struct ClaimsView: View {
         defer { busy = false }
         do {
             _ = try await MashanglingAPI.shared.claim.resolve(id: r.id, action: action)
-            ToastCenter.shared.success(action == "approve" ? "已通过，对方现在可以看到无料码" : "已拒绝")
-            await load()
+            ToastCenter.shared.success(action == "approve" ? "已批准，申请者会收到站内信" : "已拒绝")
+            rows = (try? await MashanglingAPI.shared.claim.received()) ?? []
         } catch { ToastCenter.shared.error(error.localizedDescription) }
     }
 }
@@ -228,62 +214,95 @@ struct BookmarksView: View {
 
     var body: some View {
         ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 8) {
+                    Image(systemName: "bookmark")
+                        .font(.system(size: 18))
+                        .foregroundColor(.appPrimary)
+                    Text("我的领取清单")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(.appForeground)
+                }
+                Text("待领取的橱窗都在这儿，点进去复制码或联系发布人。已下架的橱窗会标灰。")
+                    .font(.system(size: 14))
+                    .foregroundColor(.appMutedFg)
+                    .padding(.top, 6)
+
                 if loading {
-                    LoadingView()
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 20), GridItem(.flexible(), spacing: 20)], spacing: 20) {
+                        ForEach(0..<5, id: \.self) { _ in
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color.appSecondary)
+                                .aspectRatio(4.0 / 3.0, contentMode: .fit)
+                        }
+                    }
+                    .padding(.top, 24)
+                } else if (data?.items ?? []).isEmpty {
+                    Text("清单还是空的。看到想领的橱窗，点详情页的「加入清单」就会出现在这里。")
+                        .font(.system(size: 14))
+                        .foregroundColor(.appMutedFg)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 80)
+                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, style: StrokeStyle(lineWidth: 1, dash: [6])))
+                        .padding(.top, 24)
                 } else {
-                    // 收藏的橱窗
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("收藏的橱窗（\(data?.items?.count ?? 0)）")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(.appForeground)
-                        if (data?.items ?? []).isEmpty {
-                            emptyNote("清单是空的，看到喜欢的橱窗点「清单」收藏")
-                        } else {
-                            LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
-                                ForEach(data?.items ?? []) { b in
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 20), GridItem(.flexible(), spacing: 20)], spacing: 20) {
+                        ForEach(data?.items ?? []) { b in
+                            if b.status == "removed" {
+                                VStack(alignment: .leading, spacing: 0) {
                                     NavigationLink(destination: ShowcaseDetailView(showcaseId: b.id)) {
                                         ShowcaseCardView(item: b.asShowcase)
                                     }
                                     .buttonStyle(.plain)
+                                    Text("该橱窗已下架")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.appMutedFg)
+                                        .padding(.horizontal, 2)
+                                        .padding(.top, 4)
                                 }
+                                .opacity(0.45)
+                            } else {
+                                NavigationLink(destination: ShowcaseDetailView(showcaseId: b.id)) {
+                                    ShowcaseCardView(item: b.asShowcase)
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
                     }
-                    // 收藏的卡片
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("收藏的卡片（\(data?.cards?.count ?? 0)）")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(.appForeground)
-                        if (data?.cards ?? []).isEmpty {
-                            emptyNote("还没有收藏卡片")
-                        } else {
-                            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                                ForEach(data?.cards ?? []) { c in
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        CardThemeThumbnailView(config: c.config)
-                                            .cornerRadius(10)
-                                            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.appBorder, lineWidth: 0.5))
-                                            .opacity(c.removed == true ? 0.4 : 1)
-                                        Text(c.removed == true ? "（已撤下）\(c.title)" : c.title)
-                                            .font(.system(size: 10, weight: .medium))
-                                            .foregroundColor(.appForeground)
-                                            .lineLimit(1)
-                                        Text(c.authorName ?? "")
-                                            .font(.system(size: 9))
-                                            .foregroundColor(.appMutedFg)
-                                    }
-                                }
+                    .padding(.top, 24)
+                }
+
+                // 收藏的卡片
+                if !loading, let cards = data?.cards, !cards.isEmpty {
+                    VStack(alignment: .leading, spacing: 0) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "megaphone")
+                                .font(.system(size: 18))
+                                .foregroundColor(.appPrimary)
+                            Text("收藏的卡片")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundColor(.appForeground)
+                        }
+                        Text("在卡片广场收藏的设计，点开可直接查看；已下架的会标灰。")
+                            .font(.system(size: 12))
+                            .foregroundColor(.appMutedFg)
+                            .padding(.top, 4)
+                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+                            ForEach(cards) { c in
+                                cardCell(c)
                             }
                         }
+                        .padding(.top, 16)
                     }
+                    .padding(.top, 40)
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 14)
+            .padding(.top, 24)
+            .padding(.bottom, 24)
         }
         .background(Color.appBackground)
-        .navigationTitle("我的清单")
+        .navigationTitle("我的领取清单")
         .navigationBarTitleDisplayMode(.inline)
         .task {
             data = try? await MashanglingAPI.shared.bookmark.list()
@@ -294,153 +313,405 @@ struct BookmarksView: View {
         }
     }
 
-    private func emptyNote(_ t: String) -> some View {
-        Text(t)
-            .font(.system(size: 12))
-            .foregroundColor(.appMutedFg)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 26)
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.appBorder, style: StrokeStyle(lineWidth: 1, dash: [6])))
+    @ViewBuilder
+    private func cardCell(_ c: FavoriteCardRow) -> some View {
+        let thumb = ZStack(alignment: .topLeading) {
+            CardThemeThumbnailView(config: c.config)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if c.removed == true {
+                ZStack {
+                    Color.black.opacity(0.4)
+                    Text("已下架")
+                        .font(.system(size: 12))
+                        .foregroundColor(.white)
+                }
+            } else {
+                Text("SHOW ONLY")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .background(Color.black.opacity(0.55))
+                    .clipShape(Capsule())
+                    .padding(6)
+            }
+        }
+        .aspectRatio(3.0 / 4.0, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 1))
+
+        let cell = VStack(alignment: .leading, spacing: 0) {
+            thumb
+            Text(c.title)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(.appForeground)
+                .lineLimit(1)
+                .padding(.top, 6)
+            Text(c.authorName ?? "匿名")
+                .font(.system(size: 11))
+                .foregroundColor(.appMutedFg)
+                .lineLimit(1)
+        }
+
+        if c.removed == true {
+            cell.opacity(0.5)
+        } else {
+            NavigationLink(destination: CardPlazaView(initialPostId: c.postId)) {
+                cell
+            }
+            .buttonStyle(.plain)
+        }
     }
 }
 
-// MARK: - 浏览记录（对应网页 History.tsx）
+// MARK: - 浏览记录（对应网页 BrowseHistory.tsx）
 struct BrowseHistoryView: View {
-    @State private var tab = 0
-    @State private var showcases: [BrowseHistoryRow] = []
+    @State private var showcases: [Showcase]? = nil
     @State private var cards: [CardBrowseHistoryItem] = []
-    @State private var loading = true
+    @State private var cardsLoaded = false
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                tabBtn(0, "橱窗")
-                tabBtn(1, "卡片")
-            }
-            .padding(3)
-            .background(Color.appSecondary)
-            .cornerRadius(12)
-            .padding(.horizontal, 16)
-            .padding(.top, 10)
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 8) {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .font(.system(size: 18))
+                        .foregroundColor(.appPrimary)
+                    Text("浏览记录")
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundColor(.appForeground)
+                }
+                Text("记录你最近一天看过的橱窗，按最近浏览排序。")
+                    .font(.system(size: 14))
+                    .foregroundColor(.appMutedFg)
+                    .padding(.top, 6)
 
-            if loading {
-                LoadingView()
-                Spacer()
-            } else if tab == 0 {
-                List(showcases) { r in
-                    NavigationLink(destination: ShowcaseDetailView(showcaseId: r.showcaseId)) {
-                        HStack(spacing: 10) {
-                            AppImage(path: r.coverImage)
-                                .frame(width: 48, height: 48)
-                                .cornerRadius(8)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(r.title ?? "").font(.system(size: 13, weight: .medium)).foregroundColor(.appForeground).lineLimit(1)
-                                Text("\(r.authorName ?? "") · \(DateFmt.short(r.lastAt))")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.appMutedFg)
+                if showcases == nil {
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 20), GridItem(.flexible(), spacing: 20)], spacing: 20) {
+                        ForEach(0..<10, id: \.self) { _ in
+                            VStack(alignment: .leading, spacing: 0) {
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(Color.appSecondary)
+                                    .aspectRatio(4.0 / 3.0, contentMode: .fit)
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(Color.appSecondary)
+                                    .frame(height: 16)
+                                    .padding(.trailing, 40)
+                                    .padding(.top, 10)
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(Color.appSecondary)
+                                    .frame(height: 12)
+                                    .padding(.trailing, 90)
+                                    .padding(.top, 6)
                             }
-                            Spacer()
                         }
                     }
-                }
-                .listStyle(.plain)
-            } else {
-                List(cards) { r in
-                    HStack(spacing: 10) {
-                        if let cfg = r.config {
-                            CardThemeThumbnailView(config: cfg)
-                                .frame(width: 36, height: 48)
-                                .cornerRadius(6)
-                        }
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(r.removed == true ? "（已撤下）\(r.title ?? "")" : (r.title ?? ""))
-                                .font(.system(size: 13, weight: .medium))
+                    .padding(.top, 24)
+                } else if (showcases ?? []).isEmpty {
+                    VStack(spacing: 8) {
+                        Text("最近一天还没有浏览记录，去首页逛逛吧")
+                            .font(.system(size: 14))
+                            .foregroundColor(.appMutedFg)
+                        Button {
+                            dismiss()
+                            NotificationCenter.default.post(name: .mslSwitchTab, object: 0)
+                        } label: {
+                            Text("回到首页")
+                                .font(.system(size: 14))
                                 .foregroundColor(.appForeground)
-                                .lineLimit(1)
-                            Text("\(r.authorName ?? "") · \(DateFmt.short(r.lastAt))")
-                                .font(.system(size: 10))
-                                .foregroundColor(.appMutedFg)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 6)
+                                .background(Color.appCard)
+                                .clipShape(Capsule())
+                                .overlay(Capsule().stroke(Color.appBorder, lineWidth: 1))
                         }
-                        Spacer()
+                        .buttonStyle(.plain)
+                        .padding(.top, 8)
                     }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 80)
+                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, style: StrokeStyle(lineWidth: 1, dash: [6])))
+                    .padding(.top, 24)
+                } else {
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 20), GridItem(.flexible(), spacing: 20)], spacing: 20) {
+                        ForEach(showcases ?? []) { s in
+                            NavigationLink(destination: ShowcaseDetailView(showcaseId: s.id)) {
+                                ShowcaseCardView(item: s)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.top, 24)
                 }
-                .listStyle(.plain)
+
+                // 看过的卡片
+                if cardsLoaded && !cards.isEmpty {
+                    VStack(alignment: .leading, spacing: 0) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "megaphone")
+                                .font(.system(size: 18))
+                                .foregroundColor(.appPrimary)
+                            Text("看过的卡片")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundColor(.appForeground)
+                        }
+                        Text("在卡片广场点开过的作品，按最近浏览排序。")
+                            .font(.system(size: 12))
+                            .foregroundColor(.appMutedFg)
+                            .padding(.top, 4)
+                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+                            ForEach(cards) { c in
+                                cardCell(c)
+                            }
+                        }
+                        .padding(.top, 16)
+                    }
+                    .padding(.top, 40)
+                }
             }
+            .padding(.horizontal, 16)
+            .padding(.top, 24)
+            .padding(.bottom, 24)
         }
         .background(Color.appBackground)
         .navigationTitle("浏览记录")
         .navigationBarTitleDisplayMode(.inline)
-        .task {
-            async let s = try? MashanglingAPI.shared.showcase.browseHistory()
-            async let c = try? MashanglingAPI.shared.cardPlaza.browseHistory()
-            // showcase.browseHistory 返回 feed item 列表，取摘要字段
-            let sv = await s ?? []
-            showcases = sv.map {
-                BrowseHistoryRow(showcaseId: $0.id, lastAt: nil, title: $0.title,
-                                 coverImage: $0.coverImage, authorName: $0.author?.name, authorId: $0.author?.id)
+        .task { await load() }
+        .refreshable { await load() }
+    }
+
+    @ViewBuilder
+    private func cardCell(_ c: CardBrowseHistoryItem) -> some View {
+        let thumb = ZStack {
+            if let cfg = c.config {
+                CardThemeThumbnailView(config: cfg)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            cards = await c ?? []
-            loading = false
+            if c.removed == true {
+                ZStack {
+                    Color.black.opacity(0.4)
+                    Text("已下架")
+                        .font(.system(size: 12))
+                        .foregroundColor(.white)
+                }
+            }
+        }
+        .aspectRatio(3.0 / 4.0, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 1))
+
+        let cell = VStack(alignment: .leading, spacing: 0) {
+            thumb
+            Text(c.title ?? "")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(.appForeground)
+                .lineLimit(1)
+                .padding(.top, 6)
+            Text(DateFmt.short(c.lastAt))
+                .font(.system(size: 11))
+                .foregroundColor(.appMutedFg)
+                .lineLimit(1)
+        }
+
+        if c.removed == true {
+            cell.opacity(0.5)
+        } else {
+            NavigationLink(destination: CardPlazaView(initialPostId: c.postId)) {
+                cell
+            }
+            .buttonStyle(.plain)
         }
     }
 
-    private func tabBtn(_ idx: Int, _ title: String) -> some View {
-        Button { tab = idx } label: {
-            Text(title)
-                .font(.system(size: 13, weight: tab == idx ? .semibold : .regular))
-                .foregroundColor(tab == idx ? .appForeground : .appMutedFg)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .background(tab == idx ? Color.appCard : Color.clear)
-                .cornerRadius(10)
-        }
-        .buttonStyle(.plain)
+    private func load() async {
+        async let s = try? MashanglingAPI.shared.showcase.browseHistory()
+        async let c = try? MashanglingAPI.shared.cardPlaza.browseHistory()
+        showcases = await s ?? []
+        cards = await c ?? []
+        cardsLoaded = true
     }
 }
 
-// MARK: - 我的评论（对应网页 MyComments.tsx）
+// MARK: - 我的评论（对应网页 MyComments.tsx：返图 + 卡片评论按时间倒序）
 struct MyCommentsView: View {
-    @State private var items: [MyCommentsResponse.MyCommentRow] = []
-    @State private var loading = true
+    private struct Entry: Identifiable {
+        enum Kind { case repost, cardComment }
+        let kind: Kind
+        let entryId: Int
+        let at: Date
+        let atRaw: String?
+        let text: String
+        let image: String?
+        let showcaseId: Int?
+        let postId: Int?
+        let title: String
+        let removed: Bool
+        var id: String { "\(kind)-\(entryId)" }
+    }
+
+    @State private var reposts: [MyRepostsResponse.MyRepostRow]? = nil
+    @State private var comments: [MyCommentsResponse.MyCommentRow]? = nil
+
+    private var loading: Bool { reposts == nil || comments == nil }
+
+    private var entries: [Entry] {
+        var list: [Entry] = []
+        for r in reposts ?? [] {
+            list.append(Entry(kind: .repost, entryId: r.id,
+                              at: DateFmt.parse(r.createdAt) ?? .distantPast,
+                              atRaw: r.createdAt,
+                              text: r.comment ?? "", image: r.image,
+                              showcaseId: r.showcaseId, postId: nil,
+                              title: r.showcaseTitle ?? "",
+                              removed: r.showcaseStatus != "active"))
+        }
+        for c in comments ?? [] {
+            list.append(Entry(kind: .cardComment, entryId: c.id,
+                              at: DateFmt.parse(c.createdAt) ?? .distantPast,
+                              atRaw: c.createdAt,
+                              text: c.content, image: nil,
+                              showcaseId: nil, postId: c.postId,
+                              title: c.postTitle ?? "",
+                              removed: c.postStatus != "active"))
+        }
+        return list.sorted { $0.at > $1.at }
+    }
 
     var body: some View {
-        Group {
-            if loading {
-                LoadingView()
-            } else if items.isEmpty {
-                EmptyStateView(icon: "text.bubble", title: "还没有评论过卡片")
-            } else {
-                List(items) { c in
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(c.content)
-                            .font(.system(size: 13))
-                            .foregroundColor(.appForeground)
-                        HStack {
-                            Text("评论了「\(c.postTitle ?? "")」")
-                                .font(.system(size: 11))
-                                .foregroundColor(.appMutedFg)
-                                .lineLimit(1)
-                            if c.postStatus == "removed" {
-                                MiniBadge(text: "已撤下", fg: .appMutedFg, bg: .appSecondary)
-                            }
-                            Spacer()
-                            Text(DateFmt.short(c.createdAt))
-                                .font(.system(size: 10))
-                                .foregroundColor(.appMutedFg)
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 8) {
+                    Image(systemName: "text.bubble")
+                        .font(.system(size: 18))
+                        .foregroundColor(.appPrimary)
+                    Text("我的评论")
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundColor(.appForeground)
+                }
+                Text("你发布过的所有返图和卡片评论，按最新排序。")
+                    .font(.system(size: 14))
+                    .foregroundColor(.appMutedFg)
+                    .padding(.top, 6)
+
+                if loading {
+                    VStack(spacing: 12) {
+                        ForEach(0..<4, id: \.self) { _ in
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color.appSecondary)
+                                .frame(height: 80)
                         }
                     }
-                    .padding(.vertical, 4)
+                    .padding(.top, 24)
+                } else if entries.isEmpty {
+                    Text("还没有发布过返图或评论")
+                        .font(.system(size: 14))
+                        .foregroundColor(.appMutedFg)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 80)
+                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, style: StrokeStyle(lineWidth: 1, dash: [6])))
+                        .padding(.top, 24)
+                } else {
+                    VStack(spacing: 12) {
+                        ForEach(entries) { e in
+                            entryRow(e)
+                        }
+                    }
+                    .padding(.top, 24)
                 }
-                .listStyle(.plain)
             }
+            .padding(.horizontal, 16)
+            .padding(.top, 24)
+            .padding(.bottom, 24)
         }
         .background(Color.appBackground)
         .navigationTitle("我的评论")
         .navigationBarTitleDisplayMode(.inline)
-        .task {
-            items = (try? await MashanglingAPI.shared.cardPlaza.myComments().items) ?? []
-            loading = false
+        .task { await load() }
+        .refreshable { await load() }
+    }
+
+    @ViewBuilder
+    private func entryRow(_ e: Entry) -> some View {
+        let content = HStack(alignment: .top, spacing: 12) {
+            if e.kind == .repost {
+                AppImage(path: e.image)
+                    .frame(width: 56, height: 56)
+                    .cornerRadius(3)
+            } else {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Color.appPrimary.opacity(0.1))
+                    Image(systemName: "megaphone")
+                        .font(.system(size: 18))
+                        .foregroundColor(.appPrimary)
+                }
+                .frame(width: 56, height: 56)
+            }
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 6) {
+                    HStack(spacing: 4) {
+                        Image(systemName: e.kind == .repost ? "photo" : "megaphone")
+                            .font(.system(size: 10))
+                        Text(e.kind == .repost ? "返图" : "卡片评论")
+                    }
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.appSecondaryFg)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(Color.appSecondary)
+                    .clipShape(Capsule())
+                    Text(e.kind == .repost ? "橱窗「\(e.title)」" : "卡片「\(e.title)」")
+                        .font(.system(size: 12))
+                        .foregroundColor(.appMutedFg)
+                        .lineLimit(1)
+                    if e.removed {
+                        Text("已下架")
+                            .font(.system(size: 10))
+                            .foregroundColor(.appMutedFg)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 1)
+                            .background(Color.appSecondary)
+                            .clipShape(Capsule())
+                    }
+                    Spacer()
+                    Text(DateFmt.short(e.atRaw))
+                        .font(.system(size: 12))
+                        .foregroundColor(.appMutedFg)
+                }
+                Text(e.text.isEmpty ? "（无文字）" : e.text)
+                    .font(.system(size: 14))
+                    .foregroundColor(.appForeground)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 6)
+            }
         }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.appCard)
+        .cornerRadius(4)
+        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 1))
+
+        if e.kind == .repost {
+            NavigationLink(destination: ShowcaseDetailView(showcaseId: e.showcaseId ?? 0)) {
+                content
+            }
+            .buttonStyle(.plain)
+        } else if !e.removed {
+            NavigationLink(destination: CardPlazaView(initialPostId: e.postId ?? 0)) {
+                content
+            }
+            .buttonStyle(.plain)
+        } else {
+            content
+        }
+    }
+
+    private func load() async {
+        async let r = try? MashanglingAPI.shared.repost.mine()
+        async let c = try? MashanglingAPI.shared.cardPlaza.myComments()
+        reposts = await r?.items ?? []
+        comments = await c?.items ?? []
     }
 }
 

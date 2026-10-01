@@ -394,6 +394,7 @@ struct AvatarMenuPanel: View {
 
 extension Notification.Name {
     static let mslOpenHomeModulesEditor = Notification.Name("mslOpenHomeModulesEditor")
+    static let mslSwitchTab = Notification.Name("mslSwitchTab")
 }
 
 // MARK: - 页脚（复刻网页 Footer.tsx）

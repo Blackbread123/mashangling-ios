@@ -1309,6 +1309,7 @@ struct BookmarkedShowcase: Codable, Identifiable {
     let addressSentByMe: Bool?
     let addressCount: Int?
     let bookmarkedAt: String?
+    let status: String?
 
     /// 转成通用橱窗卡片模型
     var asShowcase: Showcase {

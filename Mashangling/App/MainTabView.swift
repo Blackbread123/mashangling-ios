@@ -56,6 +56,9 @@ struct MainTabView: View {
         .ignoresSafeArea(.keyboard)
         .sheet(isPresented: $showLogin) { LoginView() }
         .onAppear { unreadManager.startPolling() }
+        .onReceive(NotificationCenter.default.publisher(for: .mslSwitchTab)) { n in
+            if let i = n.object as? Int { tab = i }
+        }
     }
 
     // 普通标签：图标 24 + 文字 10，选中变主色（网页：active 仅 text-primary）
