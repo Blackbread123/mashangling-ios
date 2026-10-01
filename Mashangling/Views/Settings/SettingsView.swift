@@ -19,6 +19,7 @@ struct SettingsView: View {
     @State private var alipay = ""
     @State private var busy = false
     @State private var dmLoaded = false
+    @State private var addressAgreed = UserDefaults.standard.bool(forKey: "msl-addr-agreed")
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -188,17 +189,50 @@ struct SettingsView: View {
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(.appForeground)
                     Spacer()
-                    Button { Task { await saveAddresses() } } label: {
-                        Text("保存全部")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.appPrimaryFg)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 6)
-                            .background(Color.appPrimary)
-                            .clipShape(Capsule())
+                    if addressAgreed {
+                        Button { Task { await saveAddresses() } } label: {
+                            Text("保存全部")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(.appPrimaryFg)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 6)
+                                .background(Color.appPrimary)
+                                .clipShape(Capsule())
+                        }
+                        .disabled(busy)
                     }
-                    .disabled(busy)
                 }
+                if !addressAgreed {
+                    // 对应网页 Settings.tsx 的地址免责声明：同意后才允许填写
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("地址免责声明")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.fixAmber700)
+                        Text("收货地址（昵称、手机号、详细地址）属于你的个人敏感信息。你在橱窗页点击「发送地址」后，地址将直接发送给对应橱窗的发布者，由发布者自行保管和使用，平台仅提供信息传递通道，不参与寄件过程。")
+                            .font(.system(size: 12))
+                            .foregroundColor(.appMutedFg)
+                        Text("对于发布者使用、保管不当或泄露你的地址所造成的任何损失或纠纷，平台不承担任何责任。请确认对方可信后再发送地址；如发生地址泄露或滥用，请直接与发布者协商解决，必要时通过法律途径维权。")
+                            .font(.system(size: 12))
+                            .foregroundColor(.appMutedFg)
+                        Button {
+                            addressAgreed = true
+                            UserDefaults.standard.set(true, forKey: "msl-addr-agreed")
+                        } label: {
+                            Text("我已阅读并同意，填写地址")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(.appPrimaryFg)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 9)
+                                .background(Color.appPrimary)
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(12)
+                    .background(Color.fixAmber100.opacity(0.5))
+                    .cornerRadius(8)
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.fixAmber300, lineWidth: 1))
+                } else {
                 ForEach(Array(entries.enumerated()), id: \.element.id) { idx, _ in
                     addressEntryEditor(idx)
                 }
@@ -239,6 +273,7 @@ struct SettingsView: View {
                         }
                         .disabled(busy)
                     }
+                }
                 }
             }
         }
