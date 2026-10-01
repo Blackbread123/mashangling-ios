@@ -166,17 +166,20 @@ struct ShareCardCanvas: View {
                 .padding(.horizontal, 44)
             }
 
-            // 贴纸（最多 2 个）
+            // 贴纸（最多 2 个；网页 drawImage/预览热区均以左上角为原点：left=x·W, top=y·H）
             if let stickers = theme?.stickers {
-                ForEach(Array(stickers.prefix(2))) { st in
-                    if let data = SiteConfig.dataFromDataURL(st.url), let ui = UIImage(data: data) {
-                        Image(uiImage: ui)
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(width: Self.designW * st.scale)
-                            .offset(x: Self.designW * st.x, y: Self.designH * st.y)
+                ZStack(alignment: .topLeading) {
+                    ForEach(Array(stickers.prefix(2))) { st in
+                        if let data = SiteConfig.dataFromDataURL(st.url), let ui = UIImage(data: data) {
+                            Image(uiImage: ui)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: Self.designW * st.scale)
+                                .offset(x: Self.designW * st.x, y: Self.designH * st.y)
+                        }
                     }
                 }
+                .frame(width: Self.designW, height: Self.designH)
             }
 
             // 底部品牌条
