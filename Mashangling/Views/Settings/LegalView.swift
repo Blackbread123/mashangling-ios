@@ -212,7 +212,6 @@ struct DeleteAccountSheet: View {
                         .foregroundColor(.appMutedFg)
                 }
             }
-            .overlay(ToastOverlay())
         }
     }
 

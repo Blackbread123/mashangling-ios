@@ -103,7 +103,6 @@ struct LoginView: View {
                 }
             }
         }
-        .overlay(ToastOverlay())
         .onChange(of: authManager.isAuthenticated) { ok in
             if ok { dismiss() }
         }

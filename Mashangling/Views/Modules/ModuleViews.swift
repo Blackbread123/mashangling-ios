@@ -42,7 +42,6 @@ struct ClaimsView: View {
         .navigationTitle("领取与申请")
         .navigationBarTitleDisplayMode(.inline)
         .task { tab = initialTab; await load() }
-        .overlay(ToastOverlay())
     }
 
     private func tabBtn(_ idx: Int, _ title: String) -> some View {
@@ -446,6 +445,7 @@ struct MyCommentsView: View {
 
 // MARK: - 积分与等级（对应网页 Points.tsx）
 struct PointsView: View {
+    private let initialTab: Int
     @EnvironmentObject var authManager: AuthManager
     @State private var my: PointsMy? = nil
     @State private var records: [PointLogRow] = []
@@ -453,7 +453,12 @@ struct PointsView: View {
     @State private var period = "week"
     @State private var checkin: CheckinStatus? = nil
     @State private var tasks: TaskProgress? = nil
-    @State private var tab = 0
+    @State private var tab: Int = 0
+
+    init(initialTab: Int = 0) {
+        self.initialTab = initialTab
+        _tab = State(initialValue: initialTab)
+    }
     @State private var busy = false
 
     var body: some View {
@@ -515,7 +520,6 @@ struct PointsView: View {
         }
         .task { await load() }
         .refreshable { await load() }
-        .overlay(ToastOverlay())
     }
 
     private func overviewCard(_ p: PointsMy) -> some View {

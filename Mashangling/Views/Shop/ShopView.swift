@@ -183,7 +183,6 @@ struct ShopView: View {
             friends = (try? await MashanglingAPI.shared.follow.mutuals()) ?? []
             loading = false
         }
-        .overlay(ToastOverlay())
     }
 
     private func buyGoodwill() async {
@@ -373,7 +372,6 @@ struct ApprovalDetailSheet: View {
         .task {
             detail = try? await MashanglingAPI.shared.address.approvalDetail(id: approvalId)
         }
-        .overlay(ToastOverlay())
     }
 
     private func review(_ action: String) async {

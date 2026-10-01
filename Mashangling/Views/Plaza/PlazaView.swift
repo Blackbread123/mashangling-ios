@@ -40,7 +40,6 @@ struct PlazaView: View {
             .navigationBarTitleDisplayMode(.inline)
             .task { await load() }
             .refreshable { await load() }
-            .overlay(ToastOverlay())
         }
     }
 
@@ -699,7 +698,6 @@ struct CardDetailSheet: View {
             }
         }
         .presentationDetents([.large])
-        .overlay(ToastOverlay())
         .sheet(isPresented: $showLogin) { LoginView() }
         .sheet(isPresented: $showReport) { ReportSheet(targetType: "cardPost", targetId: postId) }
         .sheet(isPresented: $showFriends) { CardShareFriendSheet(postId: postId) }

@@ -1,52 +1,123 @@
 import SwiftUI
 
-// MARK: - 主 Tab 视图（对应网页 TabBar）
-// iOS 16 兼容：使用 UITabBarController 外观 + SwiftUI TabView
+// MARK: - 主 Tab 视图（逐行复刻网页 TabBar.tsx）
+// 网页移动端底栏：通栏 h-14、顶部分隔线 border-border/60、bg-background/95 + 毛玻璃；
+// 中间「发布」凸起 48 圆形主色按钮（上移 16）；选中态仅图标/文字变主色（无底块）；
+// 消息带红色未读角标；消息/我的需登录。不用系统 TabView（新版 iOS 会渲染成悬浮胶囊）。
 struct MainTabView: View {
     @StateObject private var unreadManager = UnreadManager.shared
     @EnvironmentObject var authManager: AuthManager
+    @State private var tab = 0
+    @State private var showLogin = false
 
     var body: some View {
-        TabView {
-            HomeView()
-                .tabItem {
-                    Label("首页", systemImage: "house.fill")
+        GeometryReader { geo in
+            let bottomPad = geo.safeAreaInsets.bottom * 0.5 // 网页：paddingBottom = 安全区 * 0.5
+            let barHeight = 56 + bottomPad
+            ZStack(alignment: .bottom) {
+                // 内容区
+                Group {
+                    switch tab {
+                    case 0: HomeView()
+                    case 1: PlazaView()
+                    case 2: NavigationStack { PublishView() }
+                    case 3: MessagesView()
+                    default: NavigationStack { ProfileView(userId: authManager.currentUser?.id ?? 0) }
+                    }
                 }
-                .tag(0)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.bottom, barHeight)
 
-            PlazaView()
-                .tabItem {
-                    Label("广场", systemImage: "square.grid.2x2.fill")
+                // 底栏
+                VStack(spacing: 0) {
+                    Rectangle()
+                        .fill(Color.appBorder.opacity(0.6))
+                        .frame(height: 0.5)
+                    HStack(spacing: 0) {
+                        tabButton(index: 0, label: "首页", icon: "house")
+                        tabButton(index: 1, label: "广场", icon: "square.grid.2x2")
+                        publishButton
+                        tabButton(index: 3, label: "消息", icon: "bubble.left",
+                                  badge: unreadManager.totalUnread)
+                        tabButton(index: 4, label: "我的", icon: "person")
+                    }
+                    .frame(height: 56)
+                    Color.clear.frame(height: bottomPad)
                 }
-                .tag(1)
-
-            NavigationStack {
-                PublishView()
+                .background(
+                    ZStack {
+                        Rectangle().fill(.ultraThinMaterial)
+                        Color.appBackground.opacity(0.95)
+                    }
+                    .ignoresSafeArea(edges: .bottom)
+                )
             }
-                .tabItem {
-                    Label("发布", systemImage: "plus.circle.fill")
-                }
-                .tag(2)
+        }
+        .ignoresSafeArea(.keyboard)
+        .sheet(isPresented: $showLogin) { LoginView() }
+        .onAppear { unreadManager.startPolling() }
+    }
 
-            MessagesView()
-                .tabItem {
-                    Label("消息", systemImage: "message.fill")
-                }
-                .badge(unreadManager.totalUnread)
-                .tag(3)
-
-            NavigationStack {
-                ProfileView(userId: authManager.currentUser?.id ?? 0)
+    // 普通标签：图标 24 + 文字 10，选中变主色（网页：active 仅 text-primary）
+    private func tabButton(index: Int, label: String, icon: String, badge: Int = 0) -> some View {
+        let active = tab == index
+        return Button {
+            if (index == 3 || index == 4) && !authManager.isAuthenticated {
+                showLogin = true
+            } else {
+                tab = index
             }
-                .tabItem {
-                    Label("我的", systemImage: "person.fill")
+        } label: {
+            VStack(spacing: 2) {
+                ZStack(alignment: .topTrailing) {
+                    Image(systemName: icon)
+                        .font(.system(size: 24, weight: .regular))
+                    if badge > 0 {
+                        Text(badge > 99 ? "99+" : "\(badge)")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 4)
+                            .frame(height: 16)
+                            .background(Color.red)
+                            .cornerRadius(8)
+                            .offset(x: 10, y: -4)
+                    }
                 }
-                .tag(4)
+                .frame(height: 24)
+                Text(label)
+                    .font(.system(size: 10, weight: active ? .medium : .regular))
+            }
+            .foregroundColor(active ? .appPrimary : .appMutedFg)
+            .frame(width: 64)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
         }
-        .accentColor(.appPrimary)
-        .onAppear {
-            unreadManager.startPolling()
+        .buttonStyle(.plain)
+    }
+
+    // 中间凸起「发布」：48 圆形主色底上移 16，下方 10px 小字（网页 -mt-4 h-12 w-12 shadow-md）
+    private var publishButton: some View {
+        Button {
+            if authManager.isAuthenticated { tab = 2 } else { showLogin = true }
+        } label: {
+            VStack(spacing: 4) {
+                Image(systemName: "plus")
+                    .font(.system(size: 24, weight: .regular))
+                    .foregroundColor(.appPrimaryFg)
+                    .frame(width: 48, height: 48)
+                    .background(Color.appPrimary)
+                    .clipShape(Circle())
+                    .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
+                Text("发布")
+                    .font(.system(size: 10))
+                    .foregroundColor(.appMutedFg)
+            }
+            .padding(.top, -16) // 网页 -mt-4：圆形按钮凸出底栏顶边
+            .frame(width: 64)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
     }
 }
 

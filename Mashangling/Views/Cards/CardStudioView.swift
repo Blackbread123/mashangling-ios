@@ -48,7 +48,6 @@ struct CardStudioView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
         .refreshable { await load() }
-        .overlay(ToastOverlay())
         .sheet(isPresented: $showEditor) {
             CardThemeEditorSheet(editing: editingTheme) { Task { await load() } }
         }

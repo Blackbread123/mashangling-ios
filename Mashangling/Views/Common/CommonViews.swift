@@ -128,7 +128,7 @@ struct MiniBadge: View {
     }
 }
 
-// MARK: 卡片容器（对应网页 rounded-xl border bg-card）
+// MARK: 卡片容器（对应网页 rounded-xl border bg-card；盐系 rounded-xl=4px）
 struct SectionCard<Content: View>: View {
     var padding: CGFloat = 14
     @ViewBuilder var content: Content
@@ -137,9 +137,9 @@ struct SectionCard<Content: View>: View {
         content
             .padding(padding)
             .background(Color.appCard)
-            .cornerRadius(12)
+            .cornerRadius(4)
             .overlay(
-                RoundedRectangle(cornerRadius: 12)
+                RoundedRectangle(cornerRadius: 4)
                     .stroke(Color.appBorder, lineWidth: 0.5)
             )
     }

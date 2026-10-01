@@ -365,7 +365,6 @@ struct PublishView: View {
                 }
             }
         }
-        .overlay(ToastOverlay())
         .sheet(isPresented: $showPicker) { ImagePicker(image: $cover) }
         .onAppear { prefill() }
     }

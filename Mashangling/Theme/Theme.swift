@@ -503,4 +503,16 @@ extension Color {
     static let fixAmber300 = Color(h: 40, s: 13, l: 86)
     static let fixAmber700 = Color(h: 36, s: 22, l: 43)
     static let fixRed500   = Color(h: 6, s: 17, l: 62)
+
+    // Tailwind 原始调色板（HomeModules 状态胶囊等直接用 tailwind 色，不走盐系覆盖）
+    static let twAmber100   = Color(hex: "#fef3c7")
+    static let twAmber500   = Color(hex: "#f59e0b")
+    static let twAmber700   = Color(hex: "#b45309")
+    static let twEmerald100 = Color(hex: "#d1fae5")
+    static let twEmerald700 = Color(hex: "#047857")
+    static let twSky100     = Color(hex: "#e0f2fe")
+    static let twSky700     = Color(hex: "#0369a1")
+    static let twViolet100  = Color(hex: "#ede9fe")
+    static let twViolet700  = Color(hex: "#6d28d9")
+    static let twRed500     = Color(hex: "#ef4444")
 }

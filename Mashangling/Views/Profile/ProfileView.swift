@@ -101,7 +101,6 @@ struct ProfileView: View {
         .sheet(isPresented: $showFollowList) {
             FollowListSheet(userId: userId, mode: followListMode)
         }
-        .overlay(ToastOverlay())
     }
 
     // MARK: 头部

@@ -58,7 +58,6 @@ struct ShippingView: View {
             }
         }
         .task { await load() }
-        .overlay(ToastOverlay())
         .sheet(item: $shipTarget) { item in
             shipSheet(item)
         }
@@ -588,7 +587,6 @@ struct MyShipmentsView: View {
         .refreshable {
             data = try? await MashanglingAPI.shared.address.myShipments()
         }
-        .overlay(ToastOverlay())
         .sheet(item: $proofTarget) { f in
             proofSheet(f)
         }

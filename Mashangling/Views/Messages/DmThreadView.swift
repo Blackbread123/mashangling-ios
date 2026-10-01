@@ -123,7 +123,6 @@ struct DmThreadView: View {
                 }
             }
         }
-        .overlay(ToastOverlay())
         .task {
             await load()
             timer?.invalidate()

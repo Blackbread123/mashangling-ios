@@ -2,6 +2,7 @@ import SwiftUI
 
 // MARK: - 搜索页（复刻 SearchPage.tsx）
 struct SearchView: View {
+    var initialQuery: String = ""
     @State private var input = ""
     @State private var q = ""            // 已提交的搜索词
 
@@ -15,7 +16,6 @@ struct SearchView: View {
     @EnvironmentObject var authManager: AuthManager
 
     var body: some View {
-        NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
                 // 搜索框
@@ -214,6 +214,11 @@ struct SearchView: View {
                 CardDetailSheet(postId: pid) { }
             }
         }
+        .onAppear {
+            if q.isEmpty && !initialQuery.isEmpty {
+                input = initialQuery
+                submit()
+            }
         }
     }
 

@@ -28,7 +28,6 @@ struct FarmView: View {
             }
         }
         .task { await vm.load() }
-        .overlay(ToastOverlay())
     }
 
     @ViewBuilder

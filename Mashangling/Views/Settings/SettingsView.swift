@@ -40,7 +40,6 @@ struct SettingsView: View {
         .navigationTitle("设置")
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
-        .overlay(ToastOverlay())
         .sheet(isPresented: $showAvatarPicker) { ImagePicker(image: $avatarImage) }
         .sheet(isPresented: $showDeleteAccount) { DeleteAccountSheet() }
         .onChange(of: avatarImage) { img in
@@ -535,7 +534,6 @@ struct BindEmailView: View {
         .background(Color.appBackground)
         .navigationTitle("绑定邮箱")
         .navigationBarTitleDisplayMode(.inline)
-        .overlay(ToastOverlay())
     }
 
     private func submit() async {

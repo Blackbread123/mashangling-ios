@@ -56,7 +56,6 @@ struct ShowcaseDetailView: View {
         .toolbar { toolbarContent }
         .task { await load() }
         .refreshable { await load() }
-        .overlay(ToastOverlay())
         .sheet(isPresented: $showLogin) { LoginView() }
         .sheet(isPresented: $showReport) { ReportSheet(targetType: "showcase", targetId: showcaseId) }
         .sheet(isPresented: $showClaimSheet) {
