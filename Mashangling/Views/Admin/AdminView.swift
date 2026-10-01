@@ -26,6 +26,7 @@ struct AdminView: View {
     @State private var opinionOpen: Int?
     @State private var opinion = ""
     @State private var busy = false
+    @State private var roleConfirm: AdminUser?
 
     private var isAdmin: Bool { authManager.currentUser?.role == "admin" }
     private var isSuper: Bool { authManager.currentUser?.superAdmin == true }
@@ -57,6 +58,18 @@ struct AdminView: View {
         .background(Color.appBackground)
         .task { await load() }
         .refreshable { await load() }
+        .alert("权限管理", isPresented: Binding(get: { roleConfirm != nil }, set: { if !$0 { roleConfirm = nil } })) {
+            Button("取消", role: .cancel) {}
+            Button("确定") {
+                if let u = roleConfirm { Task { await setRole(u) } }
+            }
+        } message: {
+            if let u = roleConfirm {
+                Text(u.role == "admin"
+                     ? "收回「\(u.name ?? "该用户")」的管理员权限？"
+                     : "授予「\(u.name ?? "该用户")」管理员权限？")
+            }
+        }
     }
 
     private var content: some View {
@@ -64,7 +77,7 @@ struct AdminView: View {
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
                     HStack(spacing: 8) {
-                        Text("管理后台").font(.system(size: 22, weight: .bold))
+                        Text("管理后台").font(.system(size: 24, weight: .bold))
                         if isSuper {
                             Text("主管理员")
                                 .font(.system(size: 11, weight: .medium)).foregroundStyle(Color.appPrimaryFg)
@@ -92,9 +105,9 @@ struct AdminView: View {
                 if let reports {
                     if reports.isEmpty {
                         Text(isSuper ? "暂无举报" : "暂无分派给你的举报")
-                            .font(.system(size: 13)).foregroundStyle(Color.appMutedFg)
-                            .frame(maxWidth: .infinity).padding(.vertical, 56)
-                            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.appBorder, style: StrokeStyle(lineWidth: 1, dash: [6])))
+                            .font(.system(size: 14)).foregroundStyle(Color.appMutedFg)
+                            .frame(maxWidth: .infinity).padding(.vertical, 64)
+                            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, style: StrokeStyle(lineWidth: 0.5, dash: [4, 3])))
                             .padding(.top, 24)
                     } else {
                         VStack(spacing: 12) {
@@ -139,7 +152,7 @@ struct AdminView: View {
                 Text(value.map { formatCompact($0) } ?? "—")
                     .font(.system(size: 24, weight: .bold)).monospacedDigit()
                 if let sub {
-                    Text(sub).font(.system(size: 11)).foregroundStyle(Color.appGreenFg)
+                    Text(sub).font(.system(size: 11)).foregroundStyle(Color.fixEmerald600)
                         .lineLimit(2).minimumScaleFactor(0.8)
                 }
             }
@@ -147,8 +160,8 @@ struct AdminView: View {
             if let action { action }
         }
         .padding(16).background(Color.appCard)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.appBorder, lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 0.5))
     }
 
     // MARK: 增长趋势
@@ -175,16 +188,14 @@ struct AdminView: View {
                     }
                 }
                 .padding(2)
-                .overlay(Capsule().stroke(Color.appBorder, lineWidth: 1))
+                .overlay(Capsule().stroke(Color.appBorder, lineWidth: 0.5))
             }
             // 图例
             FlowLayout(spacing: 6) {
                 ForEach(AdminView.growthMetrics, id: \.key) { m in
                     let off = growthHidden.contains(m.key)
                     Button {
-                        if off { growthHidden.remove(m.key) } else {
-                            if growthHidden.count < AdminView.growthMetrics.count - 1 { growthHidden.insert(m.key) }
-                        }
+                        if off { growthHidden.remove(m.key) } else { growthHidden.insert(m.key) }
                     } label: {
                         HStack(spacing: 5) {
                             Circle()
@@ -199,7 +210,7 @@ struct AdminView: View {
                         .padding(.horizontal, 10).padding(.vertical, 5)
                         .background(off ? Color.clear : Color.appSecondary.opacity(0.3))
                         .clipShape(Capsule())
-                        .overlay(Capsule().stroke(Color.appBorder, lineWidth: 1))
+                        .overlay(Capsule().stroke(Color.appBorder, lineWidth: 0.5))
                     }
                     .buttonStyle(.plain)
                 }
@@ -208,9 +219,9 @@ struct AdminView: View {
                 let visible = AdminView.growthMetrics.filter { !growthHidden.contains($0.key) }
                 if visible.isEmpty {
                     Text("所有统计量都已隐藏，点上方图例恢复显示")
-                        .font(.system(size: 13)).foregroundStyle(Color.appMutedFg)
+                        .font(.system(size: 14)).foregroundStyle(Color.appMutedFg)
                         .frame(maxWidth: .infinity).frame(height: 176)
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.appBorder, style: StrokeStyle(lineWidth: 1, dash: [6])))
+                        .overlay(RoundedRectangle(cornerRadius: 3).stroke(Color.appBorder, style: StrokeStyle(lineWidth: 0.5, dash: [4, 3])))
                 } else {
                     MultiLineChartView(
                         labels: labels,
@@ -218,15 +229,17 @@ struct AdminView: View {
                             (m.key, m.color, valuesOf(m.key, g, count: labels.count))
                         }
                     )
-                    .frame(height: 200)
+                    .frame(height: 208)
                 }
             } else {
-                LoadingView().frame(height: 176)
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(Color.appSecondary)
+                    .frame(height: 176)
             }
         }
         .padding(16).background(Color.appCard)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.appBorder, lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 0.5))
     }
 
     private func valuesOf(_ key: String, _ g: AdminGrowthTrend, count: Int) -> [Int] {
@@ -249,7 +262,7 @@ struct AdminView: View {
                 Text("仅主管理员可见").font(.system(size: 11)).foregroundStyle(Color.appMutedFg)
             }
             .padding(.horizontal, 16).padding(.vertical, 10)
-            Divider()
+            Rectangle().fill(Color.appBorder.opacity(0.6)).frame(height: 0.5)
             ForEach(recentUsers) { u in
                 HStack(spacing: 6) {
                     Text(u.name ?? "未命名").font(.system(size: 14, weight: .medium)).lineLimit(1)
@@ -258,21 +271,23 @@ struct AdminView: View {
                             .padding(.horizontal, 6).padding(.vertical, 2)
                             .background(Color.appPrimary.opacity(0.1)).clipShape(Capsule())
                     } else if u.role == "admin" {
-                        Text("管理员").font(.system(size: 10, weight: .medium)).foregroundStyle(Color.appGreenFg)
+                        Text("管理员").font(.system(size: 10, weight: .medium)).foregroundStyle(Color.fixEmerald700)
                             .padding(.horizontal, 6).padding(.vertical, 2)
-                            .background(Color.appGreenBg).clipShape(Capsule())
+                            .background(Color.fixEmerald100).clipShape(Capsule())
                     }
                     Text(u.email ?? "").font(.system(size: 12)).foregroundStyle(Color.appMutedFg).lineLimit(1)
                     Spacer()
                     Text(DateFmt.short(u.createdAt)).font(.system(size: 11)).foregroundStyle(Color.appMutedFg)
                 }
                 .padding(.horizontal, 16).padding(.vertical, 10)
-                if u.id != recentUsers.last?.id { Divider() }
+                if u.id != recentUsers.last?.id {
+                    Rectangle().fill(Color.appBorder.opacity(0.5)).frame(height: 0.5)
+                }
             }
         }
         .background(Color.appCard)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.appBorder, lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 0.5))
     }
 
     private var roleCard: some View {
@@ -284,21 +299,20 @@ struct AdminView: View {
                     .lineLimit(2).minimumScaleFactor(0.8)
             }
             .padding(.horizontal, 16).padding(.vertical, 10)
-            Divider()
+            Rectangle().fill(Color.appBorder.opacity(0.6)).frame(height: 0.5)
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
                     TextField("输入用户 ID，如 12", text: $searchId)
                         .keyboardType(.numberPad)
                         .font(.system(size: 14))
-                        .padding(.horizontal, 10).padding(.vertical, 8)
-                        .background(Color.appInput)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .overlay(RoundedRectangle(cornerRadius: 2).stroke(Color.appInput, lineWidth: 0.5))
                         .onChange(of: searchId) { v in
                             let digits = v.filter(\.isNumber)
                             if digits != v { searchId = digits }
                         }
                         .onSubmit { Task { await searchUser() } }
-                    Button("搜索") { Task { await searchUser() } }
+                    Button(busy ? "搜索中…" : "搜索") { Task { await searchUser() } }
                         .font(.system(size: 12)).foregroundStyle(Color.appPrimaryFg)
                         .padding(.horizontal, 16).padding(.vertical, 8)
                         .background(Color.appPrimary).clipShape(Capsule())
@@ -311,16 +325,20 @@ struct AdminView: View {
                     HStack(spacing: 6) {
                         VStack(alignment: .leading, spacing: 2) {
                             HStack(spacing: 6) {
-                                Text("\(u.name ?? "未命名") #\(u.id)")
-                                    .font(.system(size: 14, weight: .medium)).lineLimit(1)
+                                (Text(u.name ?? "未命名")
+                                    .font(.system(size: 14, weight: .medium))
+                                 + Text(" #\(u.id)")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Color.appMutedFg))
+                                    .lineLimit(1)
                                 if u.superAdmin == true {
                                     Text("主管理员").font(.system(size: 10, weight: .medium)).foregroundStyle(Color.appPrimary)
                                         .padding(.horizontal, 6).padding(.vertical, 2)
                                         .background(Color.appPrimary.opacity(0.1)).clipShape(Capsule())
                                 } else if u.role == "admin" {
-                                    Text("管理员").font(.system(size: 10, weight: .medium)).foregroundStyle(Color.appGreenFg)
+                                    Text("管理员").font(.system(size: 10, weight: .medium)).foregroundStyle(Color.fixEmerald700)
                                         .padding(.horizontal, 6).padding(.vertical, 2)
-                                        .background(Color.appGreenBg).clipShape(Capsule())
+                                        .background(Color.fixEmerald100).clipShape(Capsule())
                                 }
                             }
                             Text(u.email ?? "").font(.system(size: 12)).foregroundStyle(Color.appMutedFg).lineLimit(1)
@@ -328,27 +346,27 @@ struct AdminView: View {
                         Spacer()
                         if u.superAdmin != true && u.id != authManager.currentUser?.id {
                             Button(u.role == "admin" ? "收回权限" : "设为管理员") {
-                                Task { await setRole(u) }
+                                roleConfirm = u
                             }
                             .font(.system(size: 12))
                             .foregroundStyle(u.role == "admin" ? Color.appForeground : Color.appPrimaryFg)
                             .padding(.horizontal, 12).padding(.vertical, 7)
                             .background(u.role == "admin" ? Color.clear : Color.appPrimary)
                             .clipShape(Capsule())
-                            .overlay(Capsule().stroke(u.role == "admin" ? Color.appBorder : Color.clear, lineWidth: 1))
+                            .overlay(Capsule().stroke(u.role == "admin" ? Color.appBorder : Color.clear, lineWidth: 0.5))
                             .disabled(busy)
                         }
                     }
                     .padding(10).background(Color.appSecondary.opacity(0.3))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.appBorder.opacity(0.6), lineWidth: 1))
+                    .clipShape(RoundedRectangle(cornerRadius: 3))
+                    .overlay(RoundedRectangle(cornerRadius: 3).stroke(Color.appBorder.opacity(0.6), lineWidth: 0.5))
                 }
             }
             .padding(.horizontal, 16).padding(.vertical, 12)
         }
         .background(Color.appCard)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.appBorder, lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 0.5))
     }
 
     // MARK: 举报卡片
@@ -367,7 +385,7 @@ struct AdminView: View {
                 }
                 statusChip(r.status)
                 Spacer()
-                Text(DateFmt.full(r.createdAt)).font(.system(size: 12)).foregroundStyle(Color.appMutedFg)
+                Text(DateFmt.zhFull(r.createdAt)).font(.system(size: 12)).foregroundStyle(Color.appMutedFg)
             }
             .lineLimit(1).minimumScaleFactor(0.7)
             Text(r.reason).font(.system(size: 14)).foregroundStyle(Color.appForeground.opacity(0.9))
@@ -376,25 +394,35 @@ struct AdminView: View {
                     .font(.system(size: 12)).foregroundStyle(Color.appMutedFg)
                     .padding(.horizontal, 12).padding(.vertical, 6)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.appSecondary.opacity(0.6)).clipShape(RoundedRectangle(cornerRadius: 8))
+                    .background(Color.appSecondary.opacity(0.6)).clipShape(RoundedRectangle(cornerRadius: 3))
             }
             if let op = r.opinion, !op.isEmpty {
                 Text("处理意见\(r.opinionByName != nil ? "（\(r.opinionByName!)）" : ""):\(op)")
-                    .font(.system(size: 12)).foregroundStyle(Color(h: 217, s: 70, l: 40))
+                    .font(.system(size: 12)).foregroundStyle(Color.fixBlue800)
                     .padding(.horizontal, 12).padding(.vertical, 6)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(h: 217, s: 90, l: 96)).clipShape(RoundedRectangle(cornerRadius: 8))
+                    .background(Color.fixBlue100).clipShape(RoundedRectangle(cornerRadius: 3))
             }
 
             // 普通管理员：填写意见提交终审
             if !isSuper && r.status == "pending" {
                 if opinionOpen == r.id {
                     VStack(spacing: 8) {
-                        TextField("请填写处理意见理由（是否属实、建议如何处理）…", text: $opinion, axis: .vertical)
-                            .font(.system(size: 14)).lineLimit(3...5)
-                            .padding(10).background(Color.appInput)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                            .onChange(of: opinion) { v in if v.count > 500 { opinion = String(v.prefix(500)) } }
+                        ZStack(alignment: .topLeading) {
+                            if opinion.isEmpty {
+                                Text("请填写处理意见理由（是否属实、建议如何处理）…")
+                                    .font(.system(size: 14)).foregroundStyle(Color.appMutedFg.opacity(0.7))
+                                    .padding(.horizontal, 10).padding(.vertical, 10)
+                            }
+                            TextEditor(text: $opinion)
+                                .font(.system(size: 14))
+                                .frame(height: 76)
+                                .padding(.horizontal, 4).padding(.vertical, 2)
+                                .scrollContentBackground(.hidden)
+                                .background(Color.clear)
+                        }
+                        .overlay(RoundedRectangle(cornerRadius: 2).stroke(Color.appInput, lineWidth: 0.5))
+                        .onChange(of: opinion) { v in if v.count > 500 { opinion = String(v.prefix(500)) } }
                         HStack(spacing: 8) {
                             Button("提交给主管理员终审") { Task { await escalate(r) } }
                                 .font(.system(size: 12)).foregroundStyle(Color.appPrimaryFg)
@@ -404,7 +432,7 @@ struct AdminView: View {
                             Button("取消") { opinionOpen = nil; opinion = "" }
                                 .font(.system(size: 12)).foregroundStyle(Color.appForeground)
                                 .padding(.horizontal, 14).padding(.vertical, 8)
-                                .overlay(Capsule().stroke(Color.appBorder, lineWidth: 1))
+                                .overlay(Capsule().stroke(Color.appBorder, lineWidth: 0.5))
                         }
                     }
                 } else {
@@ -421,29 +449,29 @@ struct AdminView: View {
                     Button(AdminView.banTypes.contains(r.targetType) ? "成立：删除并封号" : "成立：下架处理") {
                         Task { await decide(r, action: "removeTarget") }
                     }
-                    .font(.system(size: 12, weight: .medium)).foregroundStyle(.white)
+                    .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.appDestructiveFg)
                     .padding(.horizontal, 14).padding(.vertical, 8)
                     .background(Color.appDestructive).clipShape(Capsule())
                     .disabled(busy)
                     Button("不成立：驳回") { Task { await decide(r, action: "dismiss") } }
                         .font(.system(size: 12)).foregroundStyle(Color.appForeground)
                         .padding(.horizontal, 14).padding(.vertical, 8)
-                        .overlay(Capsule().stroke(Color.appBorder, lineWidth: 1))
+                        .overlay(Capsule().stroke(Color.appBorder, lineWidth: 0.5))
                         .disabled(busy)
                 }
             }
         }
         .padding(16).background(Color.appCard)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.appBorder, lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 0.5))
     }
 
     private func statusChip(_ status: String) -> some View {
         let (label, fg, bg): (String, Color, Color) = {
             switch status {
-            case "pending": return ("待处理", Color.appAmberFg, Color.appAmberBg)
-            case "escalated": return ("待主管理员终审", Color(h: 217, s: 91, l: 50), Color(h: 217, s: 91, l: 94))
-            case "resolved": return ("已处理", Color.appGreenFg, Color.appGreenBg)
+            case "pending": return ("待处理", Color.fixAmber700, Color.fixAmber100)
+            case "escalated": return ("待主管理员终审", Color.fixBlue700, Color.fixBlue100)
+            case "resolved": return ("已处理", Color.fixEmerald700, Color.fixEmerald100)
             default: return ("已驳回", Color.appMutedFg, Color.appSecondary)
             }
         }()
@@ -578,7 +606,7 @@ struct AdminTagsView: View {
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
                     HStack(spacing: 8) {
-                        Text("标签管理").font(.system(size: 22, weight: .bold))
+                        Text("标签管理").font(.system(size: 24, weight: .bold))
                         Text("共 \(list?.count ?? 0) 个").font(.system(size: 14)).foregroundStyle(Color.appMutedFg)
                     }
                     Spacer()
@@ -592,18 +620,18 @@ struct AdminTagsView: View {
                     TextField("搜索标签名…", text: $q)
                         .font(.system(size: 14))
                 }
-                .padding(.horizontal, 12).padding(.vertical, 9)
-                .background(Color.appInput)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .padding(.horizontal, 12).padding(.vertical, 8)
+                .overlay(RoundedRectangle(cornerRadius: 2).stroke(Color.appInput, lineWidth: 0.5))
+                .frame(maxWidth: 224, alignment: .leading)
                 .padding(.top, 16)
 
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 4) {
                         ForEach([("all", "全部分类"), ("work", "作品"), ("character", "角色"), ("merch", "制品"), ("other", "其他")], id: \.0) { c in
                             Button { cat = c.0 } label: {
                                 Text(c.1)
-                                    .font(.system(size: 12))
-                                    .padding(.horizontal, 12).padding(.vertical, 7)
+                                    .font(.system(size: 12, weight: cat == c.0 ? .medium : .regular))
+                                    .padding(.horizontal, 12).padding(.vertical, 6)
                                     .background(cat == c.0 ? Color.appPrimary : Color.appSecondary)
                                     .foregroundStyle(cat == c.0 ? Color.appPrimaryFg : Color.appSecondaryFg)
                                     .clipShape(Capsule())
@@ -611,33 +639,50 @@ struct AdminTagsView: View {
                             .buttonStyle(.plain)
                         }
                         Button { showRemoved.toggle() } label: {
-                            HStack(spacing: 4) {
+                            HStack(spacing: 6) {
                                 Image(systemName: showRemoved ? "checkmark.square.fill" : "square")
                                     .font(.system(size: 12))
                                 Text("显示已禁用").font(.system(size: 12))
                             }
                             .foregroundStyle(Color.appMutedFg)
+                            .padding(.leading, 4)
                         }
                         .buttonStyle(.plain)
                     }
                 }
                 .padding(.top, 12)
 
-                // 列表
+                // 列表（网页为表格，含表头）
                 VStack(spacing: 0) {
+                    HStack(spacing: 8) {
+                        Text("标签").font(.system(size: 12, weight: .medium)).foregroundStyle(Color.appMutedFg)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text("分类").font(.system(size: 12, weight: .medium)).foregroundStyle(Color.appMutedFg)
+                            .frame(width: 40, alignment: .leading)
+                        Text("橱窗数").font(.system(size: 12, weight: .medium)).foregroundStyle(Color.appMutedFg)
+                            .frame(width: 44, alignment: .leading)
+                        Text("状态").font(.system(size: 12, weight: .medium)).foregroundStyle(Color.appMutedFg)
+                            .frame(width: 48, alignment: .leading)
+                        Text("操作").font(.system(size: 12, weight: .medium)).foregroundStyle(Color.appMutedFg)
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                    .background(Color.appSecondary.opacity(0.5))
+                    Rectangle().fill(Color.appBorder).frame(height: 0.5)
                     ForEach(filtered) { t in
                         tagRow(t)
-                        if t.id != filtered.last?.id { Divider() }
+                        if t.id != filtered.last?.id {
+                            Rectangle().fill(Color.appBorder.opacity(0.6)).frame(height: 0.5)
+                        }
                     }
                     if filtered.isEmpty {
                         Text("没有符合条件的标签")
-                            .font(.system(size: 13)).foregroundStyle(Color.appMutedFg)
+                            .font(.system(size: 14)).foregroundStyle(Color.appMutedFg)
                             .frame(maxWidth: .infinity).padding(.vertical, 48)
                     }
                 }
                 .background(Color.appCard)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.appBorder, lineWidth: 1))
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 0.5))
                 .padding(.top, 16)
             }
             .padding(16)
@@ -649,26 +694,35 @@ struct AdminTagsView: View {
             NavigationLink { TagDetailView(tagId: t.id) } label: {
                 Text("# \(t.name)").font(.system(size: 14, weight: .medium))
                     .foregroundStyle(Color.appForeground).lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            Text(TagCategory.label(t.category)).font(.system(size: 12)).foregroundStyle(Color.appMutedFg)
-            Text("\(t.showcaseCount ?? 0) 橱窗").font(.system(size: 12)).foregroundStyle(Color.appMutedFg)
-            Spacer()
+            .buttonStyle(.plain)
+            Text(TagCategory.label(t.category)).font(.system(size: 14)).foregroundStyle(Color.appMutedFg)
+                .frame(width: 40, alignment: .leading)
+            Text("\(t.showcaseCount ?? 0)").font(.system(size: 14)).foregroundStyle(Color.appMutedFg)
+                .frame(width: 44, alignment: .leading)
             Text(t.status == "active" ? "正常" : "已禁用")
                 .font(.system(size: 11))
-                .foregroundStyle(t.status == "active" ? Color.appGreenFg : Color.appDestructive)
+                .foregroundStyle(t.status == "active" ? Color.fixEmerald700 : Color.fixRed600)
                 .padding(.horizontal, 8).padding(.vertical, 2)
-                .background(t.status == "active" ? Color.appGreenBg : Color.appDestructive.opacity(0.12))
+                .background(t.status == "active" ? Color.fixEmerald100 : Color.fixRed100)
                 .clipShape(Capsule())
-            Button { editing = AdminTagEditing(id: t.id, name: t.name, category: t.category) } label: {
-                Label("编辑", systemImage: "pencil").font(.system(size: 12)).foregroundStyle(Color.appMutedFg)
-            }
-            if t.status == "active" {
-                Button { Task { await doSetStatus(t, status: "removed") } } label: {
-                    Label("禁用", systemImage: "nosign").font(.system(size: 12)).foregroundStyle(Color.appMutedFg)
+                .frame(width: 48, alignment: .leading)
+            HStack(spacing: 8) {
+                Button { editing = AdminTagEditing(id: t.id, name: t.name, category: t.category) } label: {
+                    Label("编辑", systemImage: "pencil").font(.system(size: 12)).foregroundStyle(Color.appMutedFg)
                 }
-            } else {
-                Button { Task { await doSetStatus(t, status: "active") } } label: {
-                    Label("恢复", systemImage: "arrow.counterclockwise").font(.system(size: 12)).foregroundStyle(Color.appGreenFg)
+                .buttonStyle(.plain)
+                if t.status == "active" {
+                    Button { Task { await doSetStatus(t, status: "removed") } } label: {
+                        Label("禁用", systemImage: "nosign").font(.system(size: 12)).foregroundStyle(Color.appMutedFg)
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Button { Task { await doSetStatus(t, status: "active") } } label: {
+                        Label("恢复", systemImage: "arrow.counterclockwise").font(.system(size: 12)).foregroundStyle(Color.fixEmerald600)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -710,31 +764,36 @@ private struct AdminTagEditSheet: View {
 
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("标签名").font(.system(size: 12)).foregroundStyle(Color.appMutedFg)
                     TextField("标签名", text: $name)
                         .font(.system(size: 14))
-                        .padding(.horizontal, 10).padding(.vertical, 9)
-                        .background(Color.appInput)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .overlay(RoundedRectangle(cornerRadius: 2).stroke(Color.appInput, lineWidth: 0.5))
                         .onChange(of: name) { v in if v.count > 32 { name = String(v.prefix(32)) } }
                 }
                 VStack(alignment: .leading, spacing: 4) {
                     Text("分类").font(.system(size: 12)).foregroundStyle(Color.appMutedFg)
-                    HStack(spacing: 8) {
+                    // 网页为 shadcn Select 下拉
+                    Menu {
                         ForEach(["work", "character", "merch", "other"], id: \.self) { c in
-                            Button { category = c } label: {
-                                Text(TagCategory.label(c))
-                                    .font(.system(size: 13))
-                                    .frame(maxWidth: .infinity).padding(.vertical, 8)
-                                    .background(category == c ? Color.appPrimary : Color.appSecondary)
-                                    .foregroundStyle(category == c ? Color.appPrimaryFg : Color.appSecondaryFg)
-                                    .clipShape(Capsule())
-                            }
-                            .buttonStyle(.plain)
+                            Button(TagCategory.label(c)) { category = c }
                         }
+                    } label: {
+                        HStack {
+                            Text(TagCategory.label(category))
+                                .font(.system(size: 14))
+                                .foregroundStyle(Color.appForeground)
+                            Spacer()
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.system(size: 10))
+                                .foregroundStyle(Color.appMutedFg)
+                        }
+                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .overlay(RoundedRectangle(cornerRadius: 2).stroke(Color.appInput, lineWidth: 0.5))
                     }
+                    .buttonStyle(.plain)
                 }
                 Button {
                     onSave(name.trimmingCharacters(in: .whitespaces), category)
