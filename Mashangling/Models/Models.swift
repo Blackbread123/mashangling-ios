@@ -78,6 +78,24 @@ enum DateFmt {
         return f.string(from: d)
     }
 
+    /// "yyyy/M/d"（对应网页 toLocaleDateString("zh-CN")）
+    static func zhDate(_ s: String?) -> String {
+        guard let d = parse(s) else { return "" }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "zh_CN")
+        f.dateFormat = "yyyy/M/d"
+        return f.string(from: d)
+    }
+
+    /// "yyyy/M/d HH:mm:ss"（对应网页 toLocaleString("zh-CN")）
+    static func zhFull(_ s: String?) -> String {
+        guard let d = parse(s) else { return "" }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "zh_CN")
+        f.dateFormat = "yyyy/M/d HH:mm:ss"
+        return f.string(from: d)
+    }
+
     /// "M月d日 HH:mm"（对应网页 toLocaleString zh-CN 的月日时分）
     static func mddhm(_ d: Date) -> String {
         let f = DateFormatter()
@@ -1042,6 +1060,31 @@ struct CardConfig: Codable, Equatable {
         var x: Double             // 0~1 相对画布宽
         var y: Double             // 0~1 相对画布高
         var scale: Double         // 相对画布宽度
+
+        init(url: String, x: Double, y: Double, scale: Double) {
+            self.url = url; self.x = x; self.y = y; self.scale = scale
+        }
+
+        /// 宽容解码：缺字段给默认值，避免整条 config 解析失败导致卡片不显示
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            url = try c.decodeIfPresent(String.self, forKey: .url) ?? ""
+            x = try c.decodeIfPresent(Double.self, forKey: .x) ?? 0.62
+            y = try c.decodeIfPresent(Double.self, forKey: .y) ?? 0.55
+            scale = try c.decodeIfPresent(Double.self, forKey: .scale) ?? 0.22
+        }
+    }
+
+    init(palette: String = "orange", gradient: Bool = false, stickers: [CardSticker] = []) {
+        self.palette = palette; self.gradient = gradient; self.stickers = stickers
+    }
+
+    /// 宽容解码：网页 CardTheme 的 gradient 是可选字段，后端可能缺省
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        palette = try c.decodeIfPresent(String.self, forKey: .palette) ?? "orange"
+        gradient = try c.decodeIfPresent(Bool.self, forKey: .gradient) ?? false
+        stickers = try c.decodeIfPresent([CardSticker].self, forKey: .stickers) ?? []
     }
 }
 
@@ -1053,6 +1096,16 @@ struct CardThemeItem: Codable, Identifiable {
     let code: String
     let source: String?           // self / imported
     let createdAt: String?
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(Int.self, forKey: .id)
+        name = try c.decodeIfPresent(String.self, forKey: .name) ?? ""
+        config = try c.decodeIfPresent(CardConfig.self, forKey: .config) ?? CardConfig()
+        code = try c.decodeIfPresent(String.self, forKey: .code) ?? ""
+        source = try c.decodeIfPresent(String.self, forKey: .source)
+        createdAt = try c.decodeIfPresent(String.self, forKey: .createdAt)
+    }
 }
 
 struct CardMineResponse: Codable {
@@ -1063,6 +1116,18 @@ struct CardMineResponse: Codable {
     let slots: Int
     let nextCost: Int?
     let availablePoints: Int
+
+    /// 宽容解码：个别计数字段缺省时给 0，避免整个列表显示不出来
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        themes = try c.decodeIfPresent([CardThemeItem].self, forKey: .themes) ?? []
+        defaultThemeId = try c.decodeIfPresent(Int.self, forKey: .defaultThemeId)
+        count = try c.decodeIfPresent(Int.self, forKey: .count) ?? themes.count
+        maxThemes = try c.decodeIfPresent(Int.self, forKey: .maxThemes) ?? 0
+        slots = try c.decodeIfPresent(Int.self, forKey: .slots) ?? 0
+        nextCost = try c.decodeIfPresent(Int.self, forKey: .nextCost)
+        availablePoints = try c.decodeIfPresent(Int.self, forKey: .availablePoints) ?? 0
+    }
 }
 
 struct CardThemeOfResponse: Codable {
@@ -1087,6 +1152,16 @@ struct CardHensResponse: Codable {
     let slots: Int
     let nextCost: Int?
     let availablePoints: Int
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        hens = try c.decodeIfPresent([HenItem].self, forKey: .hens) ?? []
+        count = try c.decodeIfPresent(Int.self, forKey: .count) ?? hens.count
+        maxHens = try c.decodeIfPresent(Int.self, forKey: .maxHens) ?? 7
+        slots = try c.decodeIfPresent(Int.self, forKey: .slots) ?? 0
+        nextCost = try c.decodeIfPresent(Int.self, forKey: .nextCost)
+        availablePoints = try c.decodeIfPresent(Int.self, forKey: .availablePoints) ?? 0
+    }
 
     struct HenItem: Codable, Identifiable {
         let id: Int

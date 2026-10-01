@@ -3,9 +3,17 @@ import UIKit
 
 // MARK: - 快递后台（对应网页 Shipping.tsx，发布者寄件管理）
 struct ShippingView: View {
+    /// 0=寄件看板 1=邮费审批（消息页「去上传凭证 / 审批」直达用）
+    var initialTab: Int = 0
+
     @State private var board: ShippingBoard? = nil
     @State private var approvals: ApprovalsResponse? = nil
-    @State private var tab = 0
+    @State private var tab: Int
+
+    init(initialTab: Int = 0) {
+        self.initialTab = initialTab
+        _tab = State(initialValue: initialTab)
+    }
     @State private var loading = true
     @State private var busy = false
     @State private var shipTarget: ShipItem? = nil

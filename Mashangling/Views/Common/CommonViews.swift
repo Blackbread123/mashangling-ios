@@ -166,9 +166,11 @@ class ToastCenter: ObservableObject {
 
     func success(_ msg: String) { show(msg) }
     func error(_ msg: String) { show(msg, error: true) }
+    func info(_ msg: String) { show(msg) }
 
     static func success(_ msg: String) { shared.show(msg) }
     static func error(_ msg: String) { shared.show(msg, error: true) }
+    static func info(_ msg: String) { shared.show(msg) }
 }
 
 struct ToastOverlay: View {

@@ -525,4 +525,6 @@ extension Color {
     static let twEmerald400 = Color(hex: "#34d399")
     static let twEmerald500 = Color(hex: "#10b981")
     static let twSlate400   = Color(hex: "#94a3b8")
+    static let twOrange600  = Color(hex: "#ea580c")
+    static let twEmerald600 = Color(hex: "#059669")
 }

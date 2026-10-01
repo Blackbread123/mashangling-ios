@@ -743,6 +743,9 @@ struct PlazaView: View {
 
 // MARK: - 卡片广场（卡片作品信息流）
 struct CardPlazaView: View {
+    /// 个人主页「我的卡片」点进来时自动打开对应作品（对应网页 /cards/plaza?post=N）
+    var initialPostId: Int? = nil
+
     @EnvironmentObject var authManager: AuthManager
     @StateObject private var vm = CardPlazaViewModel()
     @State private var openPostId: Int? = nil
@@ -849,7 +852,10 @@ struct CardPlazaView: View {
         }
         .background(Color.appBackground)
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear { vm.onAppear() }
+        .onAppear {
+            vm.onAppear()
+            if let pid = initialPostId { openPostId = pid; initialPostId = nil }
+        }
         .refreshable { await vm.reload() }
         .sheet(isPresented: Binding(get: { openPostId != nil }, set: { if !$0 { openPostId = nil } })) {
             if let pid = openPostId {
