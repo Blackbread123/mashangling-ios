@@ -7,6 +7,7 @@ struct AppTextField: View {
     var placeholder: String = ""
     var keyboard: UIKeyboardType = .default
     var secure: Bool = false
+    var monospace: Bool = false
 
     var body: some View {
         Group {
@@ -17,7 +18,7 @@ struct AppTextField: View {
                     .keyboardType(keyboard)
             }
         }
-        .font(.system(size: 14))
+        .font(monospace ? .system(size: 14, design: .monospaced) : .system(size: 14))
         .foregroundColor(.appForeground)
         .autocapitalization(.none)
         .disableAutocorrection(true)
