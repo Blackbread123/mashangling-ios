@@ -539,7 +539,7 @@ struct PointsTickerRow: Codable, Identifiable {
 
 struct PointLogRow: Codable, Identifiable {
     let id: Int
-    let userId: Int
+    let userId: Int?          // 后端流水不返回 userId，可选避免整条解码失败
     let delta: Int
     let label: String
     let showcaseId: Int?
