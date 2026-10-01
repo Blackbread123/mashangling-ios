@@ -105,23 +105,24 @@ struct HomeView: View {
                     // 头像 + 未读角标，点出下拉菜单
                     if let me = authManager.currentUser {
                         Button { showAvatarMenu.toggle() } label: {
+                            // 网页：外层 relative 不裁切，角标露出圆圈右上角
+                            ZStack(alignment: .topTrailing) {
                                 AvatarView(path: me.avatar, name: me.name ?? "U", size: 36)
-                                    .overlay(alignment: .topTrailing) {
-                                        if unreadManager.totalUnread > 0 {
-                                            Text(unreadManager.totalUnread > 99 ? "99+" : "\(unreadManager.totalUnread)")
-                                                .font(.system(size: 10, weight: .bold))
-                                                .foregroundColor(.appPrimaryFg)
-                                                .padding(.horizontal, 4)
-                                                .frame(height: 16)
-                                                .background(Color.appPrimary)
-                                                .cornerRadius(8)
-                                                .overlay(Capsule().stroke(Color.appBackground, lineWidth: 2))
-                                                .offset(x: 6, y: -6)
-                                        }
-                                    }
+                                if unreadManager.totalUnread > 0 {
+                                    Text(unreadManager.totalUnread > 99 ? "99+" : "\(unreadManager.totalUnread)")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundColor(.appPrimaryFg)
+                                        .padding(.horizontal, 4)
+                                        .frame(height: 16)
+                                        .background(Color.appPrimary)
+                                        .cornerRadius(8)
+                                        .overlay(Capsule().stroke(Color.appBackground, lineWidth: 2))
+                                        .offset(x: 6, y: -6)
+                                }
                             }
-                            .buttonStyle(.plain)
-                        } else {
+                        }
+                        .buttonStyle(.plain)
+                    } else {
                             NavigationLink(destination: LoginView()) {
                                 HStack(spacing: 4) {
                                     Image(systemName: "person").font(.system(size: 14))
