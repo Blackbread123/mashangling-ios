@@ -32,6 +32,9 @@ struct AppTextField: View {
 // MARK: - 流式布局（对应网页 flex-wrap，iOS 16 Layout 协议）
 struct FlowLayout: Layout {
     var spacing: CGFloat = 6
+    var vSpacing: CGFloat? = nil
+
+    private var vGap: CGFloat { vSpacing ?? spacing }
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let maxWidth = proposal.width ?? .infinity
@@ -42,7 +45,7 @@ struct FlowLayout: Layout {
             let s = v.sizeThatFits(.unspecified)
             if x > 0 && x + s.width > maxWidth {
                 x = 0
-                y += rowH + spacing
+                y += rowH + vGap
                 rowH = 0
             }
             rowH = max(rowH, s.height)
@@ -59,7 +62,7 @@ struct FlowLayout: Layout {
             let s = v.sizeThatFits(.unspecified)
             if x > bounds.minX && x + s.width > bounds.maxX {
                 x = bounds.minX
-                y += rowH + spacing
+                y += rowH + vGap
                 rowH = 0
             }
             v.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(s))

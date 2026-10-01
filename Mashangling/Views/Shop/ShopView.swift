@@ -467,58 +467,96 @@ struct GoodwillGiftSheet: View {
     }
 }
 
-// MARK: - 某领取人的寄件记录（对应网页 /shipping/user/:userId）
+// MARK: - 某领取人的寄件记录（逐行复刻网页 UserShipments.tsx，/shipping/user/:userId）
 struct UserShipmentsView: View {
     let userId: Int
 
+    struct ExportFileItem: Identifiable {
+        let id = UUID()
+        let url: URL
+    }
+
+    @Environment(\.dismiss) private var dismiss
     @State private var data: UserShipmentsResponse? = nil
     @State private var loading = true
+    @State private var statusFilter: ShipStatusKey = .all
+    @State private var busy = false
+    @State private var exportItem: ExportFileItem? = nil
+
+    private var items: [UserShipItem] { data?.items ?? [] }
+    private var filtered: [UserShipItem] {
+        statusFilter == .all ? items : items.filter {
+            shipStatusKeyOf(shipState: $0.shipState, trackingNo: $0.trackingNo,
+                            yundaOrderId: $0.yundaOrderId, ztoOrderId: $0.ztoOrderId) == statusFilter
+        }
+    }
+    private var statusCounts: [ShipStatusKey: Int] {
+        var acc: [ShipStatusKey: Int] = [.all: 0, .pending: 0, .preorder: 0, .ordered: 0, .external: 0, .cancelled: 0]
+        for a in items {
+            acc[shipStatusKeyOf(shipState: a.shipState, trackingNo: a.trackingNo,
+                                yundaOrderId: a.yundaOrderId, ztoOrderId: a.ztoOrderId), default: 0] += 1
+            acc[.all, default: 0] += 1
+        }
+        return acc
+    }
 
     var body: some View {
-        Group {
-            if loading {
-                LoadingView()
-            } else if let d = data {
-                List(d.items ?? []) { item in
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            NavigationLink(destination: ShowcaseDetailView(showcaseId: item.showcaseId)) {
-                                Text(item.showcaseTitle ?? "")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundColor(.appPrimary)
-                                    .lineLimit(1)
-                            }
-                            Spacer()
-                            Text(DateFmt.short(item.createdAt))
-                                .font(.system(size: 10))
-                                .foregroundColor(.appMutedFg)
-                        }
-                        Text("\(item.nickname ?? "")  \(item.phone ?? "")")
-                            .font(.system(size: 12))
-                            .foregroundColor(.appForeground)
-                        Text(item.full ?? item.address ?? "")
-                            .font(.system(size: 11))
-                            .foregroundColor(.appMutedFg)
-                        HStack(spacing: 8) {
-                            if let no = item.trackingNo, !no.isEmpty {
-                                Text("单号 \(no)")
-                                    .font(.system(size: 10, design: .monospaced))
-                                    .foregroundColor(.appMutedFg)
-                            }
-                            if let fee = item.fee {
-                                Text("邮费 \(item.feeLabel ?? "\(fee)")")
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.appMutedFg)
-                            }
-                            Spacer()
-                        }
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                Button { dismiss() } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 14))
+                        Text("返回快递后台")
+                            .font(.system(size: 14))
                     }
-                    .padding(.vertical, 4)
+                    .foregroundColor(.appMutedFg)
                 }
-                .listStyle(.plain)
-            } else {
-                EmptyStateView(icon: "cube.box", title: "暂无寄件记录")
+                .buttonStyle(.plain)
+
+                if loading {
+                    VStack(spacing: 12) {
+                        RoundedRectangle(cornerRadius: 5).fill(Color.appSecondary).frame(height: 64)
+                        RoundedRectangle(cornerRadius: 5).fill(Color.appSecondary).frame(height: 112)
+                        RoundedRectangle(cornerRadius: 5).fill(Color.appSecondary).frame(height: 112)
+                    }
+                    .padding(.top, 24)
+                } else if data == nil || items.isEmpty {
+                    VStack(spacing: 0) {
+                        Image(systemName: "shippingbox")
+                            .font(.system(size: 32))
+                            .foregroundColor(.appMutedFg)
+                        Text("该用户在你的橱窗下没有寄件记录")
+                            .font(.system(size: 14))
+                            .foregroundColor(.appMutedFg)
+                            .padding(.top, 12)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 64)
+                    .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.appBorder, style: StrokeStyle(lineWidth: 0.5, dash: [4, 3])))
+                    .padding(.top, 24)
+                } else {
+                    claimerCard.padding(.top, 16)
+                    filterRow.padding(.top, 16)
+                    if filtered.isEmpty {
+                        Text("该状态下暂无记录")
+                            .font(.system(size: 14))
+                            .foregroundColor(.appMutedFg)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 48)
+                            .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.appBorder, style: StrokeStyle(lineWidth: 0.5, dash: [4, 3])))
+                            .padding(.top, 16)
+                    } else {
+                        VStack(spacing: 12) {
+                            ForEach(filtered) { a in itemCard(a) }
+                        }
+                        .padding(.top, 16)
+                    }
+                }
             }
+            .padding(.horizontal, 16)
+            .padding(.top, 24)
+            .padding(.bottom, 24)
         }
         .background(Color.appBackground)
         .navigationTitle(data?.claimer?.name ?? "TA 的寄件")
@@ -527,123 +565,192 @@ struct UserShipmentsView: View {
             data = try? await MashanglingAPI.shared.address.userShipments(userId: userId)
             loading = false
         }
+        .sheet(item: $exportItem) { item in ShareSheet(items: [item.url]) }
     }
-}
 
-// MARK: - 邮费审批详情（对应网页 /shipping/approval/:id）
-struct ApprovalDetailSheet: View {
-    let approvalId: Int
-    var onDone: () -> Void
-
-    @Environment(\.dismiss) private var dismiss
-    @State private var detail: ApprovalDetail? = nil
-    @State private var reason = ""
-    @State private var busy = false
-
-    var body: some View {
-        NavigationStack {
-            Group {
-                if let d = detail {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 12) {
-                            SectionCard {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Text(d.showcaseTitle ?? "")
-                                        .font(.system(size: 15, weight: .semibold))
-                                        .foregroundColor(.appForeground)
-                                    Text("领取人：\(d.claimerName ?? "")")
-                                        .font(.system(size: 12))
-                                        .foregroundColor(.appMutedFg)
-                                    Text("邮费：\(d.fee ?? 0) 积分 · 类型：\(d.kind == "proof" ? "补邮凭证" : "免邮申请")")
-                                        .font(.system(size: 12))
-                                        .foregroundColor(.appMutedFg)
-                                    if let addr = d.addressFull {
-                                        Text("地址：\(addr)")
-                                            .font(.system(size: 11))
-                                            .foregroundColor(.appMutedFg)
-                                    }
-                                    if let no = d.trackingNo, !no.isEmpty {
-                                        Text("单号：\(no)")
-                                            .font(.system(size: 11))
-                                            .foregroundColor(.appMutedFg)
-                                    }
-                                }
-                            }
-                            if let proof = d.proofImage, !proof.isEmpty {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Text("付款凭证")
-                                        .font(.system(size: 13, weight: .semibold))
-                                        .foregroundColor(.appForeground)
-                                    AppImage(path: proof)
-                                        .aspectRatio(contentMode: .fit)
-                                        .frame(maxWidth: .infinity)
-                                        .cornerRadius(10)
-                                }
-                            }
-                            if d.isOwner == true && (d.status == "submitted" || d.status == "pending") {
-                                TextField("驳回理由（驳回时必填）…", text: $reason)
-                                    .font(.system(size: 13))
-                                    .padding(10)
-                                    .background(Color.appInput)
-                                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                                HStack(spacing: 10) {
-                                    Button { Task { await review("approve") } } label: {
-                                        Text("通过")
-                                            .font(.system(size: 13, weight: .medium))
-                                            .foregroundColor(.appPrimaryFg)
-                                            .frame(maxWidth: .infinity)
-                                            .padding(.vertical, 10)
-                                            .background(Color.appPrimary)
-                                            .clipShape(Capsule())
-                                    }
-                                    .disabled(busy)
-                                    Button { Task { await review("reject") } } label: {
-                                        Text("驳回")
-                                            .font(.system(size: 13))
-                                            .foregroundColor(.appDestructive)
-                                            .frame(maxWidth: .infinity)
-                                            .padding(.vertical, 10)
-                                            .overlay(Capsule().stroke(Color.appDestructive.opacity(0.5), lineWidth: 1))
-                                    }
-                                    .disabled(busy || (reason.trimmingCharacters(in: .whitespaces).isEmpty))
-                                }
-                            } else {
-                                MiniBadge(text: d.status ?? "", fg: .appMutedFg, bg: .appSecondary)
-                            }
-                        }
-                        .padding(16)
-                    }
-                } else {
-                    LoadingView()
-                }
-            }
-            .background(Color.appBackground)
-            .navigationTitle("审批详情")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("关闭") { dismiss() }
-                        .font(.system(size: 13))
+    // MARK: 领取人信息卡 + 导出
+    private var claimerCard: some View {
+        HStack(spacing: 12) {
+            if let avatar = data?.claimer?.avatar, !avatar.isEmpty {
+                AppImage(path: avatar)
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 44, height: 44)
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(Color.appBorder, lineWidth: 0.5))
+            } else {
+                ZStack {
+                    Circle().fill(Color.appSecondary).frame(width: 44, height: 44)
+                    Text((data?.claimer?.name ?? "用").prefix(1))
+                        .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(.appMutedFg)
                 }
             }
+            VStack(alignment: .leading, spacing: 2) {
+                (Text(data?.claimer?.name ?? "用户 #\(userId)")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.appForeground)
+                 + Text("  ID \(userId)")
+                    .font(.system(size: 12))
+                    .foregroundColor(.appMutedFg))
+                    .lineLimit(1)
+                Text("共 \(items.count) 条寄件记录 · 只看这个人在你橱窗下的记录")
+                    .font(.system(size: 12))
+                    .foregroundColor(.appMutedFg)
+            }
+            Spacer(minLength: 0)
+            Button { Task { await exportCainiao() } } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.down")
+                        .font(.system(size: 12))
+                    Text("导出\(statusFilter == .all ? "全部" : statusFilter.label)")
+                        .font(.system(size: 12))
+                }
+                .foregroundColor(.fixEmerald700)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .overlay(Capsule().stroke(Color.fixEmerald300, lineWidth: 0.5))
+            }
+            .buttonStyle(.plain)
+            .disabled(busy)
         }
-        .presentationDetents([.medium, .large])
-        .task {
-            detail = try? await MashanglingAPI.shared.address.approvalDetail(id: approvalId)
+        .padding(16)
+        .background(Color.appCard)
+        .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.appBorder, lineWidth: 0.5))
+        .cornerRadius(5)
+    }
+
+    // MARK: 状态筛选
+    private var filterRow: some View {
+        FlowLayout(spacing: 6, vSpacing: 6) {
+            ForEach(ShipStatusKey.allCases) { f in
+                Button { statusFilter = f } label: {
+                    HStack(spacing: 4) {
+                        Text(f.label)
+                        if (statusCounts[f] ?? 0) > 0 {
+                            Text("\(statusCounts[f] ?? 0)").opacity(0.7)
+                        }
+                    }
+                    .font(.system(size: 12, weight: statusFilter == f ? .medium : .regular))
+                    .foregroundColor(statusFilter == f ? Color.appPrimaryFg : Color.appSecondaryFg)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(statusFilter == f ? Color.appPrimary : Color.appSecondary)
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
         }
     }
 
-    private func review(_ action: String) async {
+    // MARK: 寄件记录卡
+    private func itemCard(_ a: UserShipItem) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 4) {
+                    NavigationLink(destination: ShowcaseDetailView(showcaseId: a.showcaseId)) {
+                        Text(a.showcaseTitle ?? "")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.appPrimary)
+                            .lineLimit(1)
+                    }
+                    .buttonStyle(.plain)
+                    Text(a.full ?? a.address ?? "")
+                        .font(.system(size: 12))
+                        .foregroundColor(.appForeground.opacity(0.9))
+                        .lineSpacing(8)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Button {
+                    UIPasteboard.general.string = a.full ?? a.address ?? ""
+                    ToastCenter.shared.success("地址已复制")
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 12))
+                        .foregroundColor(.appMutedFg)
+                        .padding(4)
+                }
+                .buttonStyle(.plain)
+            }
+            FlowLayout(spacing: 8, vSpacing: 6) {
+                if a.shipState == "cancelled" {
+                    shipBadgeView("已取消", bg: .appBrand100, fg: .appBrand600, ring: .appBrand200)
+                }
+                if a.shipState == "external" {
+                    shipBadgeView("已外部寄件", bg: .fixViolet100, fg: .fixViolet700, ring: .fixViolet300)
+                }
+                if a.shipState == "preorder" {
+                    shipBadgeView("预下单", bg: .fixSky50, fg: .fixSky700, ring: .fixSky300)
+                }
+                if shipStatusKeyOf(shipState: a.shipState, trackingNo: a.trackingNo,
+                                   yundaOrderId: a.yundaOrderId, ztoOrderId: a.ztoOrderId) == .pending {
+                    shipBadgeView("未下单", bg: .appSecondary, fg: .appMutedFg, semibold: false)
+                }
+                if let no = a.trackingNo, !no.isEmpty {
+                    HStack(spacing: 4) {
+                        Image(systemName: "box.truck")
+                            .font(.system(size: 10))
+                        Text("\((a.ztoOrderId?.isEmpty == false) ? "中通" : (a.cainiaoCpName?.isEmpty == false ? a.cainiaoCpName! : "韵达")) \(no)")
+                            .font(.system(size: 11, design: .monospaced))
+                    }
+                    .foregroundColor(.appForeground)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color.appSecondary)
+                    .clipShape(Capsule())
+                }
+                if let st = a.shipStatus, !st.isEmpty {
+                    shipStatusBadge(st)
+                }
+                if (a.trackingNo?.isEmpty ?? true) && ((a.yundaOrderId?.isEmpty == false) || (a.ztoOrderId?.isEmpty == false)) && a.shipState == "ordered" {
+                    shipBadgeView("已下单·待揽收", bg: .fixSky50, fg: .fixSky700, mono: true, semibold: false)
+                }
+                if let code = a.pickupCode, !code.isEmpty {
+                    Text("取货码 \(code)")
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .foregroundColor(.fixViolet700)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Color.fixViolet100)
+                        .overlay(Capsule().stroke(Color.fixViolet300, lineWidth: 0.5))
+                        .clipShape(Capsule())
+                }
+                if a.shippingPaid == true {
+                    shipBadgeView("已付款", bg: .fixEmerald100, fg: .fixEmerald700)
+                } else if let fee = a.fee {
+                    Text("预估邮费 ¥\(fee)")
+                        .font(.system(size: 11))
+                        .foregroundColor(.appMutedFg)
+                }
+                Spacer(minLength: 0)
+                Text(DateFmt.zhDate(a.createdAt))
+                    .font(.system(size: 11))
+                    .foregroundColor(.appMutedFg)
+            }
+            .padding(.top, 8)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color.appCard)
+        .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.appBorder, lineWidth: 0.5))
+        .cornerRadius(5)
+    }
+
+    // MARK: 导出菜鸟模板
+    private func exportCainiao() async {
         busy = true
         defer { busy = false }
         do {
-            _ = try await MashanglingAPI.shared.address.reviewApproval(
-                approvalId: approvalId, action: action,
-                reason: reason.trimmingCharacters(in: .whitespaces))
-            ToastCenter.shared.success(action == "approve" ? "已通过" : "已驳回")
-            dismiss()
-            onDone()
+            let r = try await MashanglingAPI.shared.address.exportCainiao(
+                showcaseId: 0, userId: userId,
+                status: statusFilter == .all ? "all" : statusFilter.rawValue)
+            guard let data = Data(base64Encoded: r.base64) else {
+                ToastCenter.shared.error("表格数据解析失败"); return
+            }
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent(r.filename)
+            try data.write(to: url)
+            exportItem = ExportFileItem(url: url)
+            ToastCenter.shared.success("已导出 \(r.count ?? 0) 条记录（菜鸟批量寄件模板格式）")
         } catch { ToastCenter.shared.error(error.localizedDescription) }
     }
 }

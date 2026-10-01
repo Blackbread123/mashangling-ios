@@ -534,6 +534,14 @@ extension Color {
     static let fixYellow600  = Color(h: 46, s: 22, l: 53)
     static let fixViolet100  = Color(h: 270, s: 10, l: 95)
     static let fixViolet600  = Color(h: 270, s: 12, l: 47)
+    static let fixSky300     = Color(h: 195, s: 15, l: 84)
+    static let fixSky700     = Color(h: 195, s: 26, l: 37)
+    static let fixViolet200  = Color(h: 270, s: 10, l: 89)
+    static let fixViolet300  = Color(h: 270, s: 9,  l: 81)
+    static let fixViolet700  = Color(h: 270, s: 13, l: 38)
+    static let fixAmber800   = Color(h: 34,  s: 24, l: 34)
+    static let fixEmerald200 = Color(h: 140, s: 11, l: 92)
+    static let fixAmber200Line = Color(h: 40, s: 14, l: 93)
 
     // Tailwind 原始调色板（HomeModules 状态胶囊等直接用 tailwind 色，不走盐系覆盖）
     static let twAmber100   = Color(hex: "#fef3c7")

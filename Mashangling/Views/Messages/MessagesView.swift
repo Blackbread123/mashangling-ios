@@ -45,14 +45,18 @@ struct MessagesView: View {
         case showcase(Int)
         case claims
         case myShipments
+        case shipping
         case shippingApprovals
+        case approval(Int)
         case dm(Int, String)
         var id: String {
             switch self {
             case .showcase(let i): return "s\(i)"
             case .claims: return "claims"
             case .myShipments: return "ms"
+            case .shipping: return "sp"
             case .shippingApprovals: return "sa"
+            case .approval(let i): return "ap\(i)"
             case .dm(let i, _): return "dm\(i)"
             }
         }
@@ -109,7 +113,9 @@ struct MessagesView: View {
                     case .showcase(let id): ShowcaseDetailView(showcaseId: id)
                     case .claims: ClaimsView()
                     case .myShipments: MyShipmentsView()
-                    case .shippingApprovals: ShippingView(initialTab: 1)
+                    case .shipping: ShippingView()
+                    case .shippingApprovals: ShippingApprovalsView()
+                    case .approval(let aid): ApprovalDetailView(approvalId: aid)
                     case .dm(let pid, let name): DmThreadView(peerId: pid, peerName: name)
                     }
                 }
@@ -505,8 +511,12 @@ struct MessagesView: View {
         if let link = m.link, !link.isEmpty {
             if link.contains("/my-shipments") {
                 route = .myShipments
-            } else if link.contains("/shipping/approval/") {
+            } else if link.contains("/shipping/approval/"), let aid = Self.idFromPath(link, prefix: "/shipping/approval/") {
+                route = .approval(aid)
+            } else if link.contains("/shipping/approvals") {
                 route = .shippingApprovals
+            } else if link.contains("/shipping") {
+                route = .shipping
             } else if let sid = Self.showcaseIdFromPath(link) {
                 route = .showcase(sid)
             } else if let sid = m.showcaseId {
@@ -526,8 +536,11 @@ struct MessagesView: View {
     }
 
     private static func showcaseIdFromPath(_ link: String) -> Int? {
-        // 匹配 "/s/123" 形式
-        guard let range = link.range(of: "/s/") else { return nil }
+        idFromPath(link, prefix: "/s/")
+    }
+
+    private static func idFromPath(_ link: String, prefix: String) -> Int? {
+        guard let range = link.range(of: prefix) else { return nil }
         let tail = link[range.upperBound...]
         let digits = tail.prefix { $0.isNumber }
         return Int(digits)
