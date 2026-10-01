@@ -24,9 +24,13 @@ struct ShowcaseCardView: View {
             .aspectRatio(4.0 / 3.0, contentMode: .fit)
             .overlay(
                 ZStack {
-                    AppImage(path: item.coverImage)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .clipped()
+                    // AppImage 的 aspectRatio(.fill) 会把自身撑得比框高，必须用 GeometryReader 钉死尺寸，
+                    // 否则整个 ZStack 被撑高、角标全部被顶出可视框外
+                    GeometryReader { geo in
+                        AppImage(path: item.coverImage)
+                            .frame(width: geo.size.width, height: geo.size.height)
+                            .clipped()
+                    }
 
                     // 右上：平台标（白底 85%）
                     VStack {
@@ -252,6 +256,7 @@ struct ShowcaseCardView: View {
                     }
                     .foregroundColor(.appMutedFg)
                     .padding(.horizontal, 8)
+                    .fixedSize()   // 网页一行显示，不折行
                 }
             }
         }

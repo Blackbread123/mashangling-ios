@@ -6,6 +6,7 @@ struct StatsDashboardView: View {
     @State private var trend: StatsTrend? = nil
     @State private var period = "week"          // week / month / year
     @State private var hidden: Set<String> = []
+    @State private var loadFailed = false
 
     private let periods: [(key: String, label: String)] = [
         ("week", "本周"), ("month", "本月"), ("year", "今年"),
@@ -44,6 +45,27 @@ struct StatsDashboardView: View {
                 .background(Color.appCard)
                 .cornerRadius(5)
                 .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.appBorder, lineWidth: 0.5))
+            } else if loadFailed {
+                // 加载失败不再静默消失，给重试入口
+                Button { Task { await loadAll() } } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "chart.bar.fill")
+                            .font(.system(size: 15))
+                            .foregroundColor(.appPrimary)
+                        Text("数据看板加载失败，点按重试")
+                            .font(.system(size: 13))
+                            .foregroundColor(.appMutedFg)
+                        Spacer()
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 12))
+                            .foregroundColor(.appMutedFg)
+                    }
+                    .padding(16)
+                    .background(Color.appCard)
+                    .cornerRadius(5)
+                    .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.appBorder, lineWidth: 0.5))
+                }
+                .buttonStyle(.plain)
             }
         }
         .task { await loadAll() }
@@ -246,7 +268,15 @@ struct StatsDashboardView: View {
     }
 
     private func loadAll() async {
-        stats = try? await MashanglingAPI.shared.stats.dashboard()
+        loadFailed = false
+        do {
+            stats = try await MashanglingAPI.shared.stats.dashboard()
+        } catch {
+            // 首次失败立刻重试一次（冷启动 cookie/网络抖动）
+            stats = try? await MashanglingAPI.shared.stats.dashboard()
+            loadFailed = stats == nil
+            print("[StatsDashboard] dashboard 加载失败: \(error)")
+        }
         await loadTrend()
     }
 

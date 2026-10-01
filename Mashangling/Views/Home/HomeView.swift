@@ -14,6 +14,59 @@ struct HomeView: View {
         NavigationStack {
             ZStack(alignment: .topTrailing) {
                 VStack(spacing: 0) {
+                    // 自定义顶栏（网页 Header.tsx 移动端：h-16 px-3，logo+裸搜索图标+头像，无胶囊无分界线）
+                    HStack(spacing: 8) {
+                        Text("码上领")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(.appForeground)
+                        Button {
+                            withAnimation(.easeOut(duration: 0.15)) { mobileSearch.toggle() }
+                        } label: {
+                            Image(systemName: "magnifyingglass")
+                                .font(.system(size: 20))
+                                .foregroundColor(.appMutedFg)
+                                .frame(width: 36, height: 36)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        Spacer()
+                        // 头像 + 未读角标（外层不裁切），点出下拉菜单
+                        if let me = authManager.currentUser {
+                            Button { showAvatarMenu.toggle() } label: {
+                                ZStack(alignment: .topTrailing) {
+                                    AvatarView(path: me.avatar, name: me.name ?? "U", size: 36)
+                                    if unreadManager.totalUnread > 0 {
+                                        Text(unreadManager.totalUnread > 99 ? "99+" : "\(unreadManager.totalUnread)")
+                                            .font(.system(size: 10, weight: .bold))
+                                            .foregroundColor(.appPrimaryFg)
+                                            .padding(.horizontal, 4)
+                                            .frame(height: 16)
+                                            .background(Color.appPrimary)
+                                            .cornerRadius(8)
+                                            .overlay(Capsule().stroke(Color.appBackground, lineWidth: 2))
+                                            .offset(x: 6, y: -6)
+                                    }
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        } else {
+                            NavigationLink(destination: LoginView()) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "person").font(.system(size: 14))
+                                    Text("登录 / 注册").font(.system(size: 14, weight: .medium))
+                                }
+                                .foregroundColor(.appPrimaryFg)
+                                .padding(.horizontal, 12).padding(.vertical, 7)
+                                .background(Color.appPrimary)
+                                .cornerRadius(18)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .frame(height: 64)
+                    .padding(.horizontal, 12)
+                    .background(Color.appBackground.opacity(0.85))
+
                     // 移动端搜索条（网页：点搜索图标在顶栏下方展开，border-t px-4 pb-3 pt-2）
                     if mobileSearch {
                         HStack(spacing: 0) {
@@ -73,70 +126,14 @@ struct HomeView: View {
                         .ignoresSafeArea()
                         .onTapGesture { showAvatarMenu = false }
                     AvatarMenuPanel(close: { showAvatarMenu = false })
-                        .padding(.top, 44)
+                        .padding(.top, 68)
                         .padding(.trailing, 8)
                         .transition(.opacity.combined(with: .scale(scale: 0.95, anchor: .topTrailing)))
                         .zIndex(1)
                 }
             }
             .animation(.easeOut(duration: 0.15), value: showAvatarMenu)
-            .navigationBarTitleDisplayMode(.inline)
-            .navigationTitle("")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    HStack(spacing: 8) {
-                        Text("码上领")
-                            .font(.system(size: 20, weight: .bold))
-                            .foregroundColor(.appForeground)
-                        // 裸搜索图标（网页：logo 右边，h-9 w-9 rounded-full 无底色）
-                        Button {
-                            withAnimation(.easeOut(duration: 0.15)) { mobileSearch.toggle() }
-                        } label: {
-                            Image(systemName: "magnifyingglass")
-                                .font(.system(size: 20))
-                                .foregroundColor(.appMutedFg)
-                                .frame(width: 36, height: 36)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    // 头像 + 未读角标，点出下拉菜单
-                    if let me = authManager.currentUser {
-                        Button { showAvatarMenu.toggle() } label: {
-                            // 网页：外层 relative 不裁切，角标露出圆圈右上角
-                            ZStack(alignment: .topTrailing) {
-                                AvatarView(path: me.avatar, name: me.name ?? "U", size: 36)
-                                if unreadManager.totalUnread > 0 {
-                                    Text(unreadManager.totalUnread > 99 ? "99+" : "\(unreadManager.totalUnread)")
-                                        .font(.system(size: 10, weight: .bold))
-                                        .foregroundColor(.appPrimaryFg)
-                                        .padding(.horizontal, 4)
-                                        .frame(height: 16)
-                                        .background(Color.appPrimary)
-                                        .cornerRadius(8)
-                                        .overlay(Capsule().stroke(Color.appBackground, lineWidth: 2))
-                                        .offset(x: 6, y: -6)
-                                }
-                            }
-                        }
-                        .buttonStyle(.plain)
-                    } else {
-                            NavigationLink(destination: LoginView()) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "person").font(.system(size: 14))
-                                    Text("登录 / 注册").font(.system(size: 14, weight: .medium))
-                                }
-                                .foregroundColor(.appPrimaryFg)
-                                .padding(.horizontal, 12).padding(.vertical, 7)
-                                .background(Color.appPrimary)
-                                .cornerRadius(18)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                }
-            }
+            .toolbar(.hidden, for: .navigationBar)   // 顶栏自绘，不用系统导航栏
             .navigationDestination(isPresented: $pushSearch) {
                 SearchView(initialQuery: searchInput)
             }

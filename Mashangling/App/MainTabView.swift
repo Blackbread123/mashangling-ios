@@ -16,7 +16,7 @@ struct MainTabView: View {
             let bottomPad = geo.safeAreaInsets.bottom * 0.5 // 网页：paddingBottom = 安全区 * 0.5
             let barHeight = 56 + bottomPad
             ZStack(alignment: .bottom) {
-                // 内容区
+                // 内容区（延伸进底部安全区，底栏高度统一由 padding 让出）
                 Group {
                     switch tab {
                     case 0: HomeView()
@@ -28,8 +28,9 @@ struct MainTabView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(.bottom, barHeight)
+                .ignoresSafeArea(edges: .bottom)
 
-                // 底栏
+                // 底栏（视觉总高对齐 PWA：56 + 安全区一半，不多不少）
                 VStack(spacing: 0) {
                     Rectangle()
                         .fill(Color.appBorder.opacity(0.6))
@@ -50,8 +51,8 @@ struct MainTabView: View {
                         Rectangle().fill(.ultraThinMaterial)
                         Color.appBackground.opacity(0.95)
                     }
-                    .ignoresSafeArea(edges: .bottom)
                 )
+                .ignoresSafeArea(edges: .bottom) // 底栏延伸进 Home 指示条区，底部留白由 bottomPad 承担
             }
         }
         .ignoresSafeArea(.keyboard)
