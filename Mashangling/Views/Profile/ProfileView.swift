@@ -718,111 +718,124 @@ struct FriendshipCardView: View {
     @ViewBuilder
     private func cardContent(_ d: FriendshipInfo) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-                HStack(spacing: 8) {
-                    Image(systemName: "heart.fill")
-                        .font(.system(size: 13))
-                        .foregroundColor(.appBrand400)
-                    Text("好友好感 Lv.\(d.level ?? 0)")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.appForeground)
-                    Spacer()
-                    Text("累计 \(d.total ?? 0) · 可用 \(d.balance ?? 0)")
-                        .font(.system(size: 12))
-                        .foregroundColor(.appMutedFg)
-                }
-                // 进度条
-                let into = (d.total ?? 0) - (d.levelStart ?? 0)
-                let need = max(1, d.nextNeed ?? 1)
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Color.appBrand100).frame(height: 6)
-                        Capsule().fill(Color.appBrand400)
-                            .frame(width: geo.size.width * min(1, CGFloat(into) / CGFloat(need)), height: 6)
-                    }
-                }
-                .frame(height: 6)
-                .padding(.top, 8)
-                Text("再互赠 \(need - into) 点好感升到 Lv.\((d.level ?? 0) + 1)（升级不扣好感）")
-                    .font(.system(size: 11))
-                    .foregroundColor(.appMutedFg)
-                    .padding(.top, 6)
-                Text("涨好感：互赠礼物（最快）、给彼此的橱窗/卡片点赞、想领/想要、收藏、评论、领到反馈")
-                    .font(.system(size: 11))
-                    .foregroundColor(.appMutedFg)
-                    .padding(.top, 6)
-
-                // 徽章墙
-                HStack(spacing: 8) {
-                    ForEach(d.badges ?? []) { b in
-                        ZStack(alignment: .topTrailing) {
-                            AppImage(path: b.image, contentMode: .fit)
-                                .frame(width: 56, height: 56)
-                                .opacity(b.isPublic == false ? 0.7 : 1)
-                            HStack(spacing: 2) {
-                                Button {
-                                    editingBadgeId = b.id
-                                    showPicker = true
-                                } label: {
-                                    Image(systemName: "pencil")
-                                        .font(.system(size: 8))
-                                        .foregroundColor(.appPrimaryFg)
-                                        .frame(width: 20, height: 20)
-                                        .background(Color.appPrimary)
-                                        .clipShape(Circle())
-                                }
-                                .buttonStyle(.plain)
-                                Button { Task { await setBadgePublic(b) } } label: {
-                                    Image(systemName: b.isPublic == false ? "eye" : "eye.slash")
-                                        .font(.system(size: 8))
-                                        .foregroundColor(.appForeground)
-                                        .frame(width: 20, height: 20)
-                                        .background(Color.appSecondary)
-                                        .clipShape(Circle())
-                                }
-                                .buttonStyle(.plain)
-                            }
-                            .offset(x: 4, y: -4)
-                            if b.isPublic == false {
-                                Image(systemName: "eye.slash")
-                                    .font(.system(size: 8))
-                                    .foregroundColor(.appMutedFg)
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                            }
-                        }
-                    }
-                    Button {
-                        editingBadgeId = nil
-                        showPicker = true
-                    } label: {
-                        Image(systemName: "plus.square")
-                            .font(.system(size: 14))
-                            .foregroundColor(.appBrand400)
-                            .frame(width: 56, height: 56)
-                            .overlay(RoundedRectangle(cornerRadius: 4)
-                                .stroke(Color.appBrand300, style: StrokeStyle(lineWidth: 0.5, dash: [4, 3])))
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(busy)
-                    Text((d.badges ?? []).isEmpty
-                         ? "上传好友徽章（PNG），第 1 个消耗 \(d.nextBadgeCost ?? 0) 好感"
-                         : "下一个徽章消耗 \(d.nextBadgeCost ?? 0) 好感")
-                        .font(.system(size: 11))
-                        .foregroundColor(.appMutedFg)
-                }
-                .padding(.top, 12)
-
-                HStack(spacing: 4) {
-                    Image(systemName: "gift").font(.system(size: 9))
-                    Text("赠礼是涨好感最快的方式：去对方橱窗点「分享 → 以礼物分享」，或让对方赠礼给你")
-                        .font(.system(size: 11))
-                }
+            friendshipHeader(d)
+            friendshipProgress(d)
+            Text("涨好感：互赠礼物（最快）、给彼此的橱窗/卡片点赞、想领/想要、收藏、评论、领到反馈")
+                .font(.system(size: 11))
                 .foregroundColor(.appMutedFg)
-                .padding(.top, 8)
+                .padding(.top, 6)
+            badgeWall(d)
+            HStack(spacing: 4) {
+                Image(systemName: "gift").font(.system(size: 9))
+                Text("赠礼是涨好感最快的方式：去对方橱窗点「分享 → 以礼物分享」，或让对方赠礼给你")
+                    .font(.system(size: 11))
             }
-            .padding(16)
-            .background(Color.appBrand50.opacity(0.5))
-            .cornerRadius(5)
-            .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.appBrand200, lineWidth: 0.5))
+            .foregroundColor(.appMutedFg)
+            .padding(.top, 8)
+        }
+        .padding(16)
+        .background(Color.appBrand50.opacity(0.5))
+        .cornerRadius(5)
+        .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.appBrand200, lineWidth: 0.5))
+    }
+
+    private func friendshipHeader(_ d: FriendshipInfo) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "heart.fill")
+                .font(.system(size: 13))
+                .foregroundColor(.appBrand400)
+            Text("好友好感 Lv.\(d.level ?? 0)")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.appForeground)
+            Spacer()
+            Text("累计 \(d.total ?? 0) · 可用 \(d.balance ?? 0)")
+                .font(.system(size: 12))
+                .foregroundColor(.appMutedFg)
+        }
+    }
+
+    private func friendshipProgress(_ d: FriendshipInfo) -> some View {
+        let into = (d.total ?? 0) - (d.levelStart ?? 0)
+        let need = max(1, d.nextNeed ?? 1)
+        return VStack(alignment: .leading, spacing: 6) {
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.appBrand100).frame(height: 6)
+                    Capsule().fill(Color.appBrand400)
+                        .frame(width: geo.size.width * min(1, CGFloat(into) / CGFloat(need)), height: 6)
+                }
+            }
+            .frame(height: 6)
+            Text("再互赠 \(need - into) 点好感升到 Lv.\((d.level ?? 0) + 1)（升级不扣好感）")
+                .font(.system(size: 11))
+                .foregroundColor(.appMutedFg)
+        }
+        .padding(.top, 8)
+    }
+
+    private func badgeWall(_ d: FriendshipInfo) -> some View {
+        HStack(spacing: 8) {
+            ForEach(d.badges ?? []) { b in
+                badgeCell(b)
+            }
+            Button {
+                editingBadgeId = nil
+                showPicker = true
+            } label: {
+                Image(systemName: "plus.square")
+                    .font(.system(size: 14))
+                    .foregroundColor(.appBrand400)
+                    .frame(width: 56, height: 56)
+                    .overlay(RoundedRectangle(cornerRadius: 4)
+                        .stroke(Color.appBrand300, style: StrokeStyle(lineWidth: 0.5, dash: [4, 3])))
+            }
+            .buttonStyle(.plain)
+            .disabled(busy)
+            Text((d.badges ?? []).isEmpty
+                 ? "上传好友徽章（PNG），第 1 个消耗 \(d.nextBadgeCost ?? 0) 好感"
+                 : "下一个徽章消耗 \(d.nextBadgeCost ?? 0) 好感")
+                .font(.system(size: 11))
+                .foregroundColor(.appMutedFg)
+        }
+        .padding(.top, 12)
+    }
+
+    private func badgeCell(_ b: FriendshipInfo.Badge) -> some View {
+        ZStack(alignment: .topTrailing) {
+            AppImage(path: b.image, contentMode: .fit)
+                .frame(width: 56, height: 56)
+                .opacity(b.isPublic == false ? 0.7 : 1)
+            HStack(spacing: 2) {
+                Button {
+                    editingBadgeId = b.id
+                    showPicker = true
+                } label: {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 8))
+                        .foregroundColor(.appPrimaryFg)
+                        .frame(width: 20, height: 20)
+                        .background(Color.appPrimary)
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                Button { Task { await setBadgePublic(b) } } label: {
+                    Image(systemName: b.isPublic == false ? "eye" : "eye.slash")
+                        .font(.system(size: 8))
+                        .foregroundColor(.appForeground)
+                        .frame(width: 20, height: 20)
+                        .background(Color.appSecondary)
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+            }
+            .offset(x: 4, y: -4)
+            if b.isPublic == false {
+                Image(systemName: "eye.slash")
+                    .font(.system(size: 8))
+                    .foregroundColor(.appMutedFg)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+            }
+        }
     }
 
     private func load() async {

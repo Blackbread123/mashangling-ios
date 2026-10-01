@@ -41,7 +41,7 @@ struct MessagesView: View {
     private static let wantTypes: Set<String> = ["want", "claimed", "restock"]
     private static let claimTypes: Set<String> = ["claim_received", "claim_approved", "claim_rejected"]
 
-    private enum Route: Identifiable {
+    private enum Route: Identifiable, Hashable {
         case showcase(Int)
         case claims
         case myShipments

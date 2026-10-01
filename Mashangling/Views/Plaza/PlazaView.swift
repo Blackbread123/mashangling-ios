@@ -749,6 +749,7 @@ struct CardPlazaView: View {
     @EnvironmentObject var authManager: AuthManager
     @StateObject private var vm = CardPlazaViewModel()
     @State private var openPostId: Int? = nil
+    @State private var didOpenInitial = false
     @State private var showLogin = false
     @State private var showLeaderboard = false
 
@@ -854,7 +855,10 @@ struct CardPlazaView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             vm.onAppear()
-            if let pid = initialPostId { openPostId = pid; initialPostId = nil }
+            if !didOpenInitial, let pid = initialPostId {
+                openPostId = pid
+                didOpenInitial = true
+            }
         }
         .refreshable { await vm.reload() }
         .sheet(isPresented: Binding(get: { openPostId != nil }, set: { if !$0 { openPostId = nil } })) {
