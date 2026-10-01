@@ -329,7 +329,7 @@ struct AdminView: View {
                                     .font(.system(size: 14, weight: .medium))
                                  + Text(" #\(u.id)")
                                     .font(.system(size: 12))
-                                    .foregroundStyle(Color.appMutedFg))
+                                    .foregroundColor(Color.appMutedFg))
                                     .lineLimit(1)
                                 if u.superAdmin == true {
                                     Text("主管理员").font(.system(size: 10, weight: .medium)).foregroundStyle(Color.appPrimary)

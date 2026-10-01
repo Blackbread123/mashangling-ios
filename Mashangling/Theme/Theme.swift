@@ -323,6 +323,13 @@ extension Color {
                 : UIColor(AppTheme.Light.destructive)
         })
     }
+    static var appDestructiveFg: Color {
+        Color(UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(AppTheme.Dark.destructiveFg)
+                : UIColor(AppTheme.Light.destructiveFg)
+        })
+    }
     static var appBorder: Color {
         Color(UIColor { traits in
             traits.userInterfaceStyle == .dark
