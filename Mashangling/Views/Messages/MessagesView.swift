@@ -102,13 +102,16 @@ struct MessagesView: View {
                 if newTab == .dm, !dmLoaded { Task { await loadConversations() } }
                 if newTab == .gift, gifts == nil { Task { await loadGifts() } }
             }
-            .navigationDestination(item: $route) { r in
-                switch r {
-                case .showcase(let id): ShowcaseDetailView(showcaseId: id)
-                case .claims: ClaimsView()
-                case .myShipments: MyShipmentsView()
-                case .shippingApprovals: ShippingView(initialTab: 1)
-                case .dm(let pid, let name): DmThreadView(peerId: pid, peerName: name)
+            // iOS 16 兼容：用 isPresented 形式（item: 形式要 iOS 17）
+            .navigationDestination(isPresented: Binding(get: { route != nil }, set: { if !$0 { route = nil } })) {
+                if let r = route {
+                    switch r {
+                    case .showcase(let id): ShowcaseDetailView(showcaseId: id)
+                    case .claims: ClaimsView()
+                    case .myShipments: MyShipmentsView()
+                    case .shippingApprovals: ShippingView(initialTab: 1)
+                    case .dm(let pid, let name): DmThreadView(peerId: pid, peerName: name)
+                    }
                 }
             }
             .fullScreenCover(isPresented: Binding(get: { previewImage != nil },

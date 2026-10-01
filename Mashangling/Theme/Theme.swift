@@ -462,6 +462,20 @@ extension Color {
                 : UIColor(AppTheme.palette(SiteThemeManager.shared.theme).brand100)
         })
     }
+    static var appBrand200: Color {
+        Color(UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(AppTheme.Dark.brand700)
+                : UIColor(AppTheme.Light.brand200)
+        })
+    }
+    static var appBrand300: Color {
+        Color(UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(AppTheme.Dark.brand400)
+                : UIColor(AppTheme.Light.brand300)
+        })
+    }
     static var appBrand400: Color {
         Color(UIColor { traits in
             traits.userInterfaceStyle == .dark
@@ -527,4 +541,10 @@ extension Color {
     static let twSlate400   = Color(hex: "#94a3b8")
     static let twOrange600  = Color(hex: "#ea580c")
     static let twEmerald600 = Color(hex: "#059669")
+    static let twSky500     = Color(hex: "#0ea5e9")
+    static let twSky300     = Color(hex: "#7dd3fc")
+    static let twSlate200   = Color(hex: "#e2e8f0")
+    static let twSlate600   = Color(hex: "#475569")
+    static let twOrange200  = Color(hex: "#fed7aa")
+    static let twOrange700  = Color(hex: "#c2410c")
 }

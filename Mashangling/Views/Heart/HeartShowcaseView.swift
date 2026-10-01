@@ -35,33 +35,41 @@ struct HeartShowcaseView: View {
                         .foregroundColor(.appMutedFg)
                 }
 
-                // 最近支持横幅
+                // 最近支持横幅（网页：brand-50/60 底 + brand-100 边框，官方 sky 胶囊）
                 if !recent.isEmpty {
                     VStack(spacing: 6) {
                         ForEach(recent) { s in
                             NavigationLink(destination: ShowcaseDetailView(showcaseId: s.showcaseId)) {
-                                HStack(spacing: 6) {
+                                HStack(spacing: 8) {
                                     Image(systemName: s.direction == "short" ? "arrow.down.right" : "heart.fill")
                                         .font(.system(size: 11))
-                                        .foregroundColor(s.direction == "short" ? .blue : .appPrimary)
-                                    Group {
-                                        Text(s.userName ?? "").bold()
-                                            + Text(s.isBot == true ? " [官方]" : "")
-                                            + Text(s.direction == "short" ? " 买空了「" : " 支持了「")
-                                            + Text(s.title ?? "")
-                                            + Text("」")
+                                        .foregroundColor(s.direction == "short" ? .twSky500 : .appBrand500)
+                                    HStack(spacing: 4) {
+                                        Text(s.userName ?? "")
+                                            .font(.system(size: 12, weight: .bold))
+                                        if s.isBot == true {
+                                            Text("官方")
+                                                .font(.system(size: 10, weight: .medium))
+                                                .foregroundColor(.twSky700)
+                                                .padding(.horizontal, 6)
+                                                .padding(.vertical, 1)
+                                                .background(Color.twSky100)
+                                                .clipShape(Capsule())
+                                        }
+                                        Text((s.direction == "short" ? "买空了「" : "支持了「") + (s.title ?? "") + "」")
+                                            .font(.system(size: 12))
                                     }
-                                    .font(.system(size: 11))
                                     .foregroundColor(.appForeground.opacity(0.9))
                                     .lineLimit(1)
                                     Spacer()
                                     Text(DateFmt.time(s.createdAt))
-                                        .font(.system(size: 10))
-                                        .foregroundColor(.appMutedFg)
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.appMutedFg.opacity(0.6))
                                 }
-                                .padding(.horizontal, 10).padding(.vertical, 7)
-                                .background(Color.appPrimary.opacity(0.06))
-                                .cornerRadius(8)
+                                .padding(.horizontal, 12).padding(.vertical, 8)
+                                .background(Color.appBrand50.opacity(0.6))
+                                .cornerRadius(3)
+                                .overlay(RoundedRectangle(cornerRadius: 3).stroke(Color.appBrand100, lineWidth: 0.5))
                             }
                             .buttonStyle(.plain)
                         }
@@ -133,7 +141,7 @@ struct HeartShowcaseView: View {
                                 .padding(10)
                                 .background(Color.appCard)
                                 .cornerRadius(4)
-                                .overlay(RoundedRectangle(cornerRadius: 4).stroke(selected?.id == r.id ? Color.appPrimary : Color.appBorder, lineWidth: 0.5))
+                                .overlay(RoundedRectangle(cornerRadius: 4).stroke(selected?.id == r.id ? Color.appBrand400 : Color.appBorder, lineWidth: 0.5))
                             }
                             .buttonStyle(.plain)
                         }
@@ -153,15 +161,22 @@ struct HeartShowcaseView: View {
                     mySupportsSection
                 }
 
+                // 我支持的橱窗
+                if authManager.isAuthenticated {
+                    mySupportsSection
+                }
+
                 // 结算规则
                 rulesSection
+
+                FooterView()
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 14)
+            .padding(.top, 24)
+            .padding(.bottom, 24)
         }
         .background(Color.appBackground)
-        .navigationTitle("心选橱窗")
-        .navigationBarTitleDisplayMode(.inline)
+        .webHeader()
         .sheet(isPresented: $showLogin) { LoginView() }
         .onAppear { Task { await load() } }
     }
@@ -190,7 +205,7 @@ struct HeartShowcaseView: View {
                 .padding(10)
                 .background(Color.appCard)
                 .cornerRadius(4)
-                .overlay(RoundedRectangle(cornerRadius: 4).stroke(selected?.id == r.id ? Color.appPrimary : Color.appBorder, lineWidth: 0.5))
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(selected?.id == r.id ? Color.appBrand400 : Color.appBorder, lineWidth: 0.5))
             }
             .buttonStyle(.plain)
             if selected?.id == r.id {
@@ -199,7 +214,7 @@ struct HeartShowcaseView: View {
         }
     }
 
-    // MARK: 支持面板（K 线 + 投入）
+    // MARK: 支持面板（网页：brand-50/50 底 + brand-200 边框，K 线 + 投入）
     private func supportPanel(for showcaseId: Int) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             MarketChartView(showcaseId: showcaseId)
@@ -207,25 +222,25 @@ struct HeartShowcaseView: View {
                 AppTextField(text: $amount, placeholder: "投入的积分", keyboard: .numberPad)
                     .frame(width: 100)
                     .onChange(of: amount) { v in
-                        let digits = v.filter { $0.isNumber }
+                        let digits = String(v.filter { $0.isNumber }.prefix(6))
                         if digits != v { amount = digits }
                     }
                 Button { doSupport(showcaseId, direction: "long") } label: {
                     Label("支持看涨", systemImage: "sparkles")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundColor(.white)
                         .padding(.horizontal, 12).padding(.vertical, 9)
-                        .background(Color.appPrimary)
-                        .cornerRadius(18)
+                        .background(Color.appBrand500)
+                        .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
                 .disabled(amount.isEmpty || info?.inWindow == false)
-                Button { doSupport(showcaseId, direction: "short") } label: {
+                Button { confirmShort(showcaseId) } label: {
                     Label("买空看跌", systemImage: "arrow.down.right")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(.blue)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.twSky700)
                         .padding(.horizontal, 12).padding(.vertical, 9)
-                        .overlay(Capsule().stroke(Color.blue, lineWidth: 0.8))
+                        .overlay(Capsule().stroke(Color.twSky300, lineWidth: 0.5))
                 }
                 .buttonStyle(.plain)
                 .disabled(amount.isEmpty || info?.inWindow == false)
@@ -234,20 +249,38 @@ struct HeartShowcaseView: View {
                         .font(.system(size: 12))
                         .foregroundColor(.appForeground)
                         .padding(.horizontal, 12).padding(.vertical, 9)
-                        .overlay(Capsule().stroke(Color.appBorder, lineWidth: 0.8))
+                        .overlay(Capsule().stroke(Color.appBorder, lineWidth: 0.5))
                 }
                 .buttonStyle(.plain)
             }
             if info?.inWindow == false {
                 Text("现在不在支持时段（每天 9:00 - 22:00 可支持）")
-                    .font(.system(size: 10))
-                    .foregroundColor(.appAmberFg)
+                    .font(.system(size: 11))
+                    .foregroundColor(.twAmber600)
             }
         }
         .padding(12)
-        .background(Color.appPrimary.opacity(0.04))
-        .cornerRadius(10)
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.appPrimary.opacity(0.3), lineWidth: 0.5))
+        .background(Color.appBrand50.opacity(0.5))
+        .cornerRadius(4)
+        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBrand200, lineWidth: 0.5))
+        .alert("确定买空看跌吗？", isPresented: $shortConfirm) {
+            Button("确定买空", role: .destructive) {
+                if let sid = shortTarget { doSupport(sid, direction: "short") }
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("若该橱窗明天排名持平或下降，你按投入权重瓜分奖池；若排名上升，积分不返还。")
+        }
+    }
+
+    @State private var shortConfirm = false
+    @State private var shortTarget: Int? = nil
+
+    private func confirmShort(_ showcaseId: Int) {
+        guard authManager.isAuthenticated else { showLogin = true; return }
+        guard let n = Int(amount), n >= 1 else { ToastCenter.error("请输入至少 1 积分"); return }
+        shortTarget = showcaseId
+        shortConfirm = true
     }
 
     // MARK: 买股王周榜
@@ -270,23 +303,25 @@ struct HeartShowcaseView: View {
                 VStack(spacing: 6) {
                     ForEach(Array(weeklyTop.enumerated()), id: \.element.id) { i, r in
                         NavigationLink(destination: ProfileView(userId: r.userId)) {
-                            HStack(spacing: 10) {
+                            HStack(spacing: 12) {
                                 Text("\(i + 1)")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(i == 0 ? .white : i == 1 ? .gray : i == 2 ? .appAmberFg : .appMutedFg)
-                                    .frame(width: 26, height: 26)
-                                    .background(i == 0 ? Color.appAmberIcon : Color.appSecondary)
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundColor(i == 0 ? .white : i == 1 ? .twSlate600 : i == 2 ? .twOrange700 : .appMutedFg)
+                                    .frame(width: 28, height: 28)
+                                    .background(i == 0
+                                                ? AnyView(LinearGradient(colors: [Color.twAmber300, Color.twAmber500], startPoint: .topLeading, endPoint: .bottomTrailing))
+                                                : AnyView(i == 1 ? Color.twSlate200 : i == 2 ? Color.twOrange200 : Color.appSecondary))
                                     .clipShape(Circle())
                                 Text(i == 0 ? "📈 \(r.name ?? "")" : (r.name ?? ""))
-                                    .font(.system(size: 13, weight: .medium))
+                                    .font(.system(size: 14, weight: .medium))
                                     .foregroundColor(.appForeground)
                                     .lineLimit(1)
                                 Spacer()
                                 Text("+\(r.profit)")
                                     .font(.system(size: 12, weight: .semibold))
-                                    .foregroundColor(.appEmeraldFg)
+                                    .foregroundColor(.twEmerald600)
                             }
-                            .padding(.horizontal, 12).padding(.vertical, 9)
+                            .padding(.horizontal, 14).padding(.vertical, 10)
                             .background(Color.appCard)
                             .cornerRadius(4)
                             .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 0.5))
