@@ -85,6 +85,8 @@ struct ContentView: View {
                 LoginView()
             }
         }
+        // 全局底色铺满安全区：状态栏/底部 Home 指示条区域不再是窗口默认黑底
+        .background(Color.appBackground.ignoresSafeArea())
         .overlay(ToastOverlay())
     }
 }

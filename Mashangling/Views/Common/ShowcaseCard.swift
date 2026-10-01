@@ -47,7 +47,7 @@ struct ShowcaseCardView: View {
                     VStack {
                         HStack {
                             if let rank = rank, rank == 1 {
-                                rankBadge(text: "NO.1", colors: ["#f9e29c", "#f0c64f", "#d99e2b"], fg: Color(h: 38, s: 92, l: 25))
+                                rankBadge(text: "NO.1", colors: ["#f9e29c", "#f0c64f", "#d99e2b"], fg: Color(h: 32, s: 26, l: 25))
                             } else if let rank = rank, rank == 2 {
                                 rankBadge(text: "NO.2", colors: ["#f8fafc", "#dbe2ea", "#a8b6c6"], fg: Color(h: 215, s: 16, l: 35))
                             } else if item.pinned == true {
@@ -71,23 +71,26 @@ struct ShowcaseCardView: View {
                         HStack {
                             Spacer()
                             VStack(alignment: .trailing, spacing: 4) {
-                                Spacer().frame(height: 22) // 避开平台标
-                                if isOwner, let r = item.remaining, let q = item.quantity {
-                                    Text("\(r)/\(q)")
-                                        .font(.system(size: 11, weight: .bold))
-                                        .monospacedDigit()
-                                        .foregroundColor(r == 0 ? .white : .appForeground)
-                                        .padding(.horizontal, 8).padding(.vertical, 2)
-                                        .background(r == 0 ? Color(h: 240, s: 4, l: 30).opacity(0.9) : Color.white.opacity(0.9))
-                                        .cornerRadius(10)
-                                }
-                                if let cc = item.codeCount, cc > 0 {
-                                    Text("补")
-                                        .font(.system(size: 11, weight: .bold))
-                                        .foregroundColor(.appPrimaryFg)
-                                        .padding(.horizontal, 8).padding(.vertical, 2)
-                                        .background(Color.appPrimary)
-                                        .cornerRadius(10)
+                                Spacer().frame(height: 28) // 平台标(top:8,高~20)+间距8 → 第二行 top:36
+                                // 网页里「余量」与「补」同在 right:8 top:36，补在后覆盖余量
+                                ZStack(alignment: .topTrailing) {
+                                    if isOwner, let r = item.remaining, let q = item.quantity {
+                                        Text("\(r)/\(q)")
+                                            .font(.system(size: 11, weight: .bold))
+                                            .monospacedDigit()
+                                            .foregroundColor(r == 0 ? .white : .appForeground)
+                                            .padding(.horizontal, 8).padding(.vertical, 2)
+                                            .background(r == 0 ? Color(h: 240, s: 4, l: 30).opacity(0.9) : Color.white.opacity(0.9))
+                                            .cornerRadius(10)
+                                    }
+                                    if let cc = item.codeCount, cc > 0 {
+                                        Text("补")
+                                            .font(.system(size: 11, weight: .bold))
+                                            .foregroundColor(.appPrimaryFg)
+                                            .padding(.horizontal, 8).padding(.vertical, 2)
+                                            .background(Color.appPrimary)
+                                            .cornerRadius(10)
+                                    }
                                 }
                             }
                         }
@@ -105,9 +108,9 @@ struct ShowcaseCardView: View {
                                         Image(systemName: "timer").font(.system(size: 9))
                                         Text(eb).font(.system(size: 11, weight: .medium))
                                     }
-                                    .foregroundColor(item.isExpired ? Color(h: 240, s: 5, l: 92) : .white)
+                                    .foregroundColor(item.isExpired ? Color(h: 240, s: 5, l: 96) : .white)
                                     .padding(.horizontal, 8).padding(.vertical, 2)
-                                    .background(item.isExpired ? Color(h: 240, s: 4, l: 30).opacity(0.85) : Color(h: 25, s: 95, l: 53).opacity(0.9))
+                                    .background(item.isExpired ? Color(h: 240, s: 4, l: 30).opacity(0.85) : Color(h: 30, s: 17, l: 61).opacity(0.9))
                                     .cornerRadius(10)
                                 }
                                 stockBadge
@@ -121,7 +124,7 @@ struct ShowcaseCardView: View {
                                 }
                                 .foregroundColor(.white)
                                 .padding(.horizontal, 8).padding(.vertical, 2)
-                                .background(Color(h: 38, s: 92, l: 50))
+                                .background(Color(h: 40, s: 15, l: 64))
                                 .cornerRadius(10)
                             }
                         }
@@ -130,8 +133,8 @@ struct ShowcaseCardView: View {
                 }
                 .clipped()
             )
-            .cornerRadius(12)
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.appBorder.opacity(0.6), lineWidth: 0.5))
+            .cornerRadius(4)   // 盐系主题 rounded-xl = 4px
+            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder.opacity(0.6), lineWidth: 1))
             .clipped()
     }
 
@@ -165,14 +168,14 @@ struct ShowcaseCardView: View {
                 .font(.system(size: 11, weight: .medium))
                 .foregroundColor(.white)
                 .padding(.horizontal, 8).padding(.vertical, 2)
-                .background(Color(h: 160, s: 84, l: 30).opacity(0.9))
+                .background(Color(h: 140, s: 13, l: 46).opacity(0.9))
                 .cornerRadius(10)
         case "limited":
             Text(item.quantity.map { "限量 \($0) 份" } ?? "限量")
                 .font(.system(size: 11, weight: .bold))
                 .foregroundColor(.white)
                 .padding(.horizontal, 8).padding(.vertical, 2)
-                .background(Color(h: 38, s: 92, l: 50))
+                .background(Color(h: 40, s: 15, l: 64))
                 .cornerRadius(10)
         default:
             EmptyView()

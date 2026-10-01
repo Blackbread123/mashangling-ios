@@ -18,14 +18,14 @@ struct HomeView: View {
                     // 小 Tip 轮播条
                     tipBar
 
-                    // 心选橱窗 / 我的农场 入口
-                    HStack(spacing: 10) {
+                    // 心选橱窗 / 我的农场 入口（网页：农场跳到个人主页）
+                    HStack(spacing: 12) {
                         NavigationLink(destination: HeartShowcaseView()) {
                             entryCard(icon: "diamond.fill", title: "心选橱窗", badge: nil)
                         }
                         .buttonStyle(.plain)
 
-                        NavigationLink(destination: FarmView(userId: authManager.currentUser?.id ?? 0)) {
+                        NavigationLink(destination: ProfileView(userId: authManager.currentUser?.id ?? 0)) {
                             entryCard(icon: "leaf.fill", title: "我的农场",
                                       badge: vm.farmRate.map { String(format: "%.2f%%", ($0.dailyRate ?? 0) * 100) })
                         }
@@ -124,7 +124,7 @@ struct HomeView: View {
     private func entryCard(icon: String, title: String, badge: String?) -> some View {
         HStack(spacing: 10) {
             Image(systemName: icon)
-                .font(.system(size: 13))
+                .font(.system(size: 16))
                 .foregroundColor(.appPrimaryFg)
                 .frame(width: 32, height: 32)
                 .background(Color.appPrimary)
@@ -136,7 +136,7 @@ struct HomeView: View {
             Spacer(minLength: 0)
             if let badge = badge {
                 Text(badge)
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
                     .foregroundColor(.appSecondaryFg)
                     .padding(.horizontal, 6).padding(.vertical, 2)
                     .background(Color.appSecondary)
@@ -146,8 +146,8 @@ struct HomeView: View {
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
         .background(Color.appCard)
-        .cornerRadius(14)
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.appBorder, lineWidth: 0.5))
+        .cornerRadius(16)
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.appBorder, lineWidth: 0.5))
     }
 }
 

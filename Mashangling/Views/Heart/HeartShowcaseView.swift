@@ -21,9 +21,14 @@ struct HeartShowcaseView: View {
             VStack(alignment: .leading, spacing: 18) {
                 // 说明
                 VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "gem").foregroundColor(.appPrimary)
-                        Text("心选橱窗").font(.system(size: 20, weight: .bold)).foregroundColor(.appForeground)
+                    HStack(spacing: 8) {
+                        Image(systemName: "diamond")
+                            .font(.system(size: 24))
+                            .foregroundColor(.appBrand500)
+                        Text("心选橱窗")
+                            .font(.system(size: 24, weight: .bold))
+                            .tracking(-0.6)
+                            .foregroundColor(.appForeground)
                     }
                     Text("用积分支持你看好的橱窗，或买空你看淡的橱窗：押对方向即可按投入权重瓜分奖池积分。")
                         .font(.system(size: 11))

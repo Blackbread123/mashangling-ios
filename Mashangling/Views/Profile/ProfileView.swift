@@ -225,7 +225,8 @@ struct ProfileView: View {
 
     // MARK: 我的快捷入口
     private var myShortcuts: some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+        let isAdmin = authManager.currentUser?.isAdmin == true
+        return LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
             shortcut("领取申请", icon: "checkmark.rectangle", dest: AnyView(ClaimsView()))
             shortcut("快递后台", icon: "shippingbox", dest: AnyView(ShippingView()))
             shortcut("我的快递", icon: "cube.box", dest: AnyView(MyShipmentsView()))
@@ -234,6 +235,11 @@ struct ProfileView: View {
             shortcut("我的评论", icon: "text.bubble", dest: AnyView(MyCommentsView()))
             shortcut("积分等级", icon: "trophy", dest: AnyView(PointsView()))
             shortcut("个性化", icon: "paintpalette", dest: AnyView(CardStudioView()))
+            // 管理员入口（对应网页头像菜单的管理员项）
+            if isAdmin {
+                shortcut("举报处理", icon: "shield", dest: AnyView(AdminView()))
+                shortcut("标签管理", icon: "tag", dest: AnyView(AdminTagsView()))
+            }
         }
     }
 

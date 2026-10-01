@@ -2,6 +2,9 @@ import SwiftUI
 
 // MARK: - 领取申请（发布者审批，对应网页 Claims.tsx）
 struct ClaimsView: View {
+    /// 详情页胶囊直达：0=领取申请 1=我想要 2=补货提醒
+    var initialTab: Int = 0
+
     @State private var rows: [ClaimRow] = []
     @State private var requests: [RequestReceivedRow] = []
     @State private var soldouts: [SoldoutReceivedRow] = []
@@ -38,7 +41,7 @@ struct ClaimsView: View {
         .background(Color.appBackground)
         .navigationTitle("领取与申请")
         .navigationBarTitleDisplayMode(.inline)
-        .task { await load() }
+        .task { tab = initialTab; await load() }
         .overlay(ToastOverlay())
     }
 

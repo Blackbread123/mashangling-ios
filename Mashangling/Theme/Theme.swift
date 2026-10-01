@@ -187,7 +187,7 @@ struct AppTheme {
         let primary, primaryForeground: Color
         let secondary, secondaryForeground, muted, mutedForeground: Color
         let accent, accentForeground, border, input, ring: Color
-        let brand50, brand100, brand400, brand600: Color
+        let brand50, brand100, brand400, brand500, brand600: Color
     }
 
     static func palette(_ theme: String) -> Palette {
@@ -202,7 +202,7 @@ struct AppTheme {
                 accent: Color(h: 240, s: 5, l: 91), accentForeground: Color(h: 240, s: 5, l: 20),
                 border: Color(h: 240, s: 4, l: 87), input: Color(h: 240, s: 4, l: 83), ring: Color(h: 240, s: 5, l: 28),
                 brand50: Color(h: 240, s: 5, l: 95), brand100: Color(h: 240, s: 5, l: 92),
-                brand400: Color(h: 240, s: 3, l: 58), brand600: Color(h: 240, s: 4, l: 34)
+                brand400: Color(h: 240, s: 3, l: 58), brand500: Color(h: 240, s: 3, l: 46), brand600: Color(h: 240, s: 4, l: 34)
             )
         case "green":
             return Palette(
@@ -214,7 +214,7 @@ struct AppTheme {
                 accent: Color(h: 135, s: 9, l: 89), accentForeground: Color(h: 150, s: 10, l: 22),
                 border: Color(h: 130, s: 5, l: 84), input: Color(h: 130, s: 4, l: 80), ring: Color(h: 150, s: 14, l: 30),
                 brand50: Color(h: 140, s: 10, l: 94), brand100: Color(h: 140, s: 10, l: 90),
-                brand400: Color(h: 145, s: 8, l: 54), brand600: Color(h: 150, s: 13, l: 34)
+                brand400: Color(h: 145, s: 8, l: 54), brand500: Color(h: 150, s: 10, l: 43), brand600: Color(h: 150, s: 13, l: 34)
             )
         case "pink":
             return Palette(
@@ -226,7 +226,7 @@ struct AppTheme {
                 accent: Color(h: 340, s: 12, l: 91), accentForeground: Color(h: 345, s: 12, l: 28),
                 border: Color(h: 340, s: 8, l: 87), input: Color(h: 340, s: 7, l: 83), ring: Color(h: 345, s: 14, l: 40),
                 brand50: Color(h: 345, s: 24, l: 95), brand100: Color(h: 345, s: 22, l: 92),
-                brand400: Color(h: 345, s: 14, l: 63), brand600: Color(h: 345, s: 20, l: 45)
+                brand400: Color(h: 345, s: 14, l: 63), brand500: Color(h: 345, s: 16, l: 53), brand600: Color(h: 345, s: 20, l: 45)
             )
         default: // blue 婴儿蓝（默认）
             return Palette(
@@ -238,7 +238,7 @@ struct AppTheme {
                 accent: Light.accent, accentForeground: Light.accentForeground,
                 border: Light.border, input: Light.input, ring: Light.ring,
                 brand50: Light.brand50, brand100: Light.brand100,
-                brand400: Light.brand400, brand600: Light.brand600
+                brand400: Light.brand400, brand500: Light.brand500, brand600: Light.brand600
             )
         }
     }
@@ -380,10 +380,10 @@ extension Color {
                 : UIColor(AppTheme.Light.emeraldLight)
         })
     }
-    /// 翠绿主色（对应网页 emerald-600，用于描边/徽标）
-    static var appEmerald: Color { Color(h: 160, s: 84, l: 39) }
-    /// 琥珀主色（对应网页 amber-500，用于描边/徽标）
-    static var appAmber: Color { Color(h: 38, s: 92, l: 50) }
+    /// 翠绿主色（对应网页莫兰迪映射 emerald-600 = hsl(140 13% 46%)，用于描边/徽标）
+    static var appEmerald: Color { Color(h: 140, s: 13, l: 46) }
+    /// 琥珀主色（对应网页莫兰迪映射 amber-500 = hsl(40 15% 64%)，用于描边/徽标）
+    static var appAmber: Color { Color(h: 40, s: 15, l: 64) }
     static var appGreenBg: Color {
         Color(UIColor { traits in
             traits.userInterfaceStyle == .dark
@@ -469,6 +469,13 @@ extension Color {
                 : UIColor(AppTheme.palette(SiteThemeManager.shared.theme).brand400)
         })
     }
+    static var appBrand500: Color {
+        Color(UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(AppTheme.Dark.brand400)
+                : UIColor(AppTheme.palette(SiteThemeManager.shared.theme).brand500)
+        })
+    }
     static var appBrand600: Color {
         Color(UIColor { traits in
             traits.userInterfaceStyle == .dark
@@ -476,4 +483,24 @@ extension Color {
                 : UIColor(AppTheme.palette(SiteThemeManager.shared.theme).brand600)
         })
     }
+}
+
+// MARK: - 固定盐系色（对应网页莫兰迪 tailwind 映射，不随主题/深色模式变化）
+// 与 index.css 的 zinc/orange/sky/emerald/amber/red 覆盖值逐条一致
+extension Color {
+    static let fixZinc50  = Color(hex: "#fafafa")
+    static let fixZinc200 = Color(hex: "#e4e4e7")
+    static let fixZinc500 = Color(hex: "#71717a")
+    static let fixZinc600 = Color(hex: "#52525b")
+    static let fixOrange100 = Color(h: 30, s: 16, l: 93)
+    static let fixOrange700 = Color(h: 26, s: 25, l: 41)
+    static let fixSky600    = Color(h: 195, s: 22, l: 46)
+    static let fixEmerald100 = Color(h: 140, s: 11, l: 92)
+    static let fixEmerald300 = Color(h: 140, s: 10, l: 84)
+    static let fixEmerald700 = Color(h: 140, s: 15, l: 37)
+    static let fixAmber100 = Color(h: 40, s: 14, l: 93)
+    static let fixAmber200 = Color(h: 40, s: 14, l: 93)
+    static let fixAmber300 = Color(h: 40, s: 13, l: 86)
+    static let fixAmber700 = Color(h: 36, s: 22, l: 43)
+    static let fixRed500   = Color(h: 6, s: 17, l: 62)
 }

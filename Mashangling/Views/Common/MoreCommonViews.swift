@@ -74,10 +74,10 @@ struct LevelBadgeView: View {
     let level: Int
 
     var body: some View {
-        // 网页 LevelBadge：纯文字 Lv.N，天蓝色加粗，无底色无段位名
+        // 网页 LevelBadge：纯文字 Lv.N，12px 加粗，莫兰迪映射 sky-600 = hsl(195 22% 46%)
         Text("Lv.\(max(1, level))")
             .font(.system(size: 12, weight: .bold))
-            .foregroundColor(Color(hex: "#0284c7"))
+            .foregroundColor(Color(h: 195, s: 22, l: 46))
     }
 }
 
@@ -94,18 +94,20 @@ struct TitleBadgeView: View {
     var body: some View {
         if let m = meta {
             if plain {
-                Text("\(m.icon) \(m.label)")
-                    .font(.system(size: 10))
-                    .foregroundColor(.appAmberFg)
-                    .lineLimit(1)
+                // plain：纯 emoji 图案，text-sm（排行榜等紧凑场景）
+                Text(m.icon)
+                    .font(.system(size: 14))
             } else {
+                // 胶囊：bg-amber-100 hsl(40 14% 93%)、text-amber-700 hsl(36 22% 43%)、
+                // ring-1 ring-amber-300/60、px-1.5 py-0.5、text-[10px] font-bold、rounded-full
                 Text("\(m.icon) \(m.label)")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(.appAmberFg)
-                    .padding(.horizontal, 7)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(Color(h: 36, s: 22, l: 43))
+                    .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(Color.appAmberBg)
-                    .cornerRadius(8)
+                    .background(Color(h: 40, s: 14, l: 93))
+                    .clipShape(Capsule())
+                    .overlay(Capsule().stroke(Color(h: 40, s: 13, l: 86).opacity(0.6), lineWidth: 1))
                     .lineLimit(1)
             }
         }

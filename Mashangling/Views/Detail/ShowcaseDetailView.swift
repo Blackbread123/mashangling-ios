@@ -28,6 +28,11 @@ struct ShowcaseDetailView: View {
     @State private var showGiftSheet = false
     @State private var showEdit = false
     @State private var shareImage: ShareImageItem? = nil
+    @State private var addresses: ReceivedAddresses? = nil
+    @State private var addressExpanded = false
+    @State private var newCode = ""
+    @State private var showDeleteConfirm = false
+    @State private var showDmAuthor = false
 
     struct ShareImageItem: Identifiable {
         let id = UUID()
@@ -72,6 +77,12 @@ struct ShowcaseDetailView: View {
         .sheet(item: $shareImage) { item in
             ShareSheet(items: [item.image])
         }
+        .confirmationDialog("确定删除这个橱窗吗？", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
+            Button("删除", role: .destructive) { Task { await removeShowcase() } }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("删除后不可恢复")
+        }
     }
 
     @ToolbarContentBuilder
@@ -107,418 +118,856 @@ struct ShowcaseDetailView: View {
         }
     }
 
-    // MARK: 主体
+    // MARK: 主体（对应网页 ShowcaseDetail.tsx：封面自然比例 → 标题/作者/标签/简介/码区/操作栏）
     private func content(_ d: ShowcaseDetailData) -> some View {
         ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 14) {
-                // 封面（网页：w-full object-cover，自然比例，高度随图）
-                ZStack(alignment: .topLeading) {
-                    AppImage(path: d.coverImage, contentMode: .fit)
-                        .frame(maxWidth: .infinity)
-                        .background(Color.appSecondary)
-                        .cornerRadius(12)
-                    MiniBadge(text: PlatformLabel.of(d.platform), fg: .white, bg: Color.black.opacity(0.55))
-                        .padding(10)
-                }
+            VStack(alignment: .leading, spacing: 0) {
+                // 封面：rounded 5px + 1px border-border/60，自然比例
+                AppImage(path: d.coverImage, contentMode: .fit)
+                    .frame(maxWidth: .infinity)
+                    .background(Color.appCard)
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                    .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.appBorder.opacity(0.6), lineWidth: 1))
 
-                // 标题 + 作者
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(d.title)
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.appForeground)
-                    HStack(spacing: 8) {
-                        NavigationLink(destination: ProfileView(userId: d.author?.id ?? 0)) {
-                            HStack(spacing: 6) {
-                                AvatarView(path: d.author?.avatar, name: d.author?.name ?? "", size: 26)
-                                Text(d.author?.name ?? "未知用户")
-                                    .font(.system(size: 13, weight: .medium))
-                                    .foregroundColor(.appForeground)
-                                if let lv = d.author?.level {
-                                    LevelBadgeView(level: lv)
-                                }
-                                TitleBadgeView(equippedTitle: d.author?.equippedTitle)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        Spacer()
-                        Text(DateFmt.short(d.createdAt))
-                            .font(.system(size: 11))
-                            .foregroundColor(.appMutedFg)
-                    }
-                    // 标签
-                    if let tags = d.tags, !tags.isEmpty {
-                        FlowLayout(spacing: 6) {
-                            ForEach(tags) { t in
-                                NavigationLink(destination: TagDetailView(tagId: t.id)) {
-                                    Text("# \(t.name)")
-                                        .font(.system(size: 11))
-                                        .foregroundColor(.appForeground)
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 5)
-                                        .background(Color.appSecondary)
-                                        .cornerRadius(12)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                }
-
-                // 领取状态 / 关键信息
-                statusCard(d)
-
-                // 描述
-                if let desc = d.description, !desc.isEmpty {
-                    SectionCard {
+                VStack(alignment: .leading, spacing: 0) {
+                    titleRow(d)
+                    authorRow(d)
+                    tagsRow(d)
+                    if let desc = d.description, !desc.isEmpty {
+                        // 简介：裸文本不套卡，14px/24px，foreground 90%
                         Text(desc)
-                            .font(.system(size: 13))
+                            .font(.system(size: 14))
+                            .lineSpacing(7)
                             .foregroundColor(.appForeground.opacity(0.9))
-                            .lineSpacing(4)
+                            .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.top, 16)
                     }
+                    mainCodeSection(d)
+                    actionsRow(d)
                 }
+                .padding(.top, 32) // 网页 grid gap-32
 
-                // 无料码区
-                codeSection(d)
-
-                // 操作区
-                actionRow(d)
-
-                // 返图区
-                repostSection(d)
-
-                // 相关橱窗
-                if let related = d.related, !related.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("相关橱窗")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.appForeground)
-                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
-                            ForEach(related.prefix(6)) { item in
-                                NavigationLink(destination: ShowcaseDetailView(showcaseId: item.id)) {
-                                    ShowcaseCardView(item: item)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                }
+                codeSection(d)    // 补码区 mt-24
+                addressSection(d) // 收到的地址 mt-24（仅本人+外部无料）
+                repostSection(d)  // 返图 mt-40
+                relatedSection(d) // 相关橱窗 mt-48
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 14)
+            .padding(.top, 24)
+            .padding(.bottom, 24)
+        }
+        .background(dmAuthorLink)
+    }
+
+    // MARK: 标题行（24px 粗 + 平台/限时/浏览胶囊，gap 10）
+    private func titleRow(_ d: ShowcaseDetailData) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            Text(d.title)
+                .font(.system(size: 24, weight: .bold))
+                .tracking(-0.6)
+                .foregroundColor(.appForeground)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(PlatformLabel.of(d.platform))
+                .font(.system(size: 12))
+                .foregroundColor(.appSecondaryFg)
+                .padding(.horizontal, 10).padding(.vertical, 2)
+                .background(Color.appSecondary)
+                .clipShape(Capsule())
+                .fixedSize()
+            if d.expiresAt != nil { expiresPill(d) }
+            if d.isMine == true { viewsPill(d) }
         }
     }
 
-    // MARK: 状态卡
-    private func statusCard(_ d: ShowcaseDetailData) -> some View {
-        SectionCard {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
-                    if d.expired == true {
-                        MiniBadge(text: "已失效", fg: .white, bg: .appDestructive)
-                    }
-                    switch d.stockStatus {
-                    case "soldout": MiniBadge(text: "领完即止", fg: .appRedFg, bg: .appSecondary)
-                    case "restock": MiniBadge(text: "可补码", fg: .appEmeraldFg, bg: .appEmeraldBg)
-                    case "limited":
-                        MiniBadge(text: "限量 \(d.quantity ?? 0) 份", fg: .appAmberFg, bg: .appAmberBg)
-                    default: EmptyView()
-                    }
-                    if let pc = d.pointCost, pc > 0 {
-                        MiniBadge(text: "\(pc) 积分解锁", fg: .appAmberFg, bg: .appAmberBg)
-                    }
-                    if d.shippingFree == true {
-                        MiniBadge(text: "包邮", fg: .appEmeraldFg, bg: .appEmeraldBg)
-                    }
-                    Spacer()
-                }
-                HStack(spacing: 14) {
-                    Text("👁 \(d.viewCount ?? 0)").font(.system(size: 11)).foregroundColor(.appMutedFg)
-                    Text("❤️ \(likeCount)").font(.system(size: 11)).foregroundColor(.appMutedFg)
-                    Text("✅ \(d.claimCount ?? 0) 人领到").font(.system(size: 11)).foregroundColor(.appMutedFg)
-                    if let q = d.quantity, let r = d.remaining {
-                        Text("余量 \(r)/\(q)").font(.system(size: 11)).foregroundColor(.appMutedFg)
-                    }
-                    Spacer()
-                }
-                if let t = d.expiresAtText ?? d.expiresAt.map({ DateFmt.full($0) }), d.expiresAt != nil {
-                    Text(d.expired == true ? "已于 \(t) 失效" : "限时 · \(t) 失效")
-                        .font(.system(size: 11))
-                        .foregroundColor(d.expired == true ? .appRedFg : .appAmberFg)
-                }
-                if let st = d.myClaimStatus {
-                    HStack(spacing: 4) {
-                        Image(systemName: st == "approved" ? "checkmark.circle.fill" : (st == "rejected" ? "xmark.circle.fill" : "clock.fill"))
-                            .font(.system(size: 11))
-                        Text(st == "approved" ? "领取申请已通过" : (st == "rejected" ? "领取申请被拒绝" : "领取申请审核中"))
-                            .font(.system(size: 11, weight: .medium))
-                    }
-                    .foregroundColor(st == "approved" ? .appEmeraldFg : (st == "rejected" ? .appDestructive : .appAmberFg))
-                }
-                if claimedByMe {
-                    Text("✓ 你已标记「我领到了」")
-                        .font(.system(size: 11))
-                        .foregroundColor(.appEmeraldFg)
-                }
-                if let deadline = d.addressDeadlineText, d.addressEligible == true {
-                    Text("请在 \(deadline) 前发送收货地址")
-                        .font(.system(size: 11))
-                        .foregroundColor(.appAmberFg)
-                }
+    private func expiresPill(_ d: ShowcaseDetailData) -> some View {
+        let expired = d.expired == true
+        return HStack(spacing: 4) {
+            Image(systemName: "timer").font(.system(size: 14))
+            Text(expired ? "已失效" : "限时 · \(d.expiresAtText ?? "") 失效")
+                .font(.system(size: 12, weight: .medium))
+                .lineLimit(1)
+        }
+        .foregroundColor(expired ? .fixZinc500 : .fixOrange700)
+        .padding(.horizontal, 10).padding(.vertical, 2)
+        .background(expired ? Color.fixZinc500.opacity(0.15) : Color.fixOrange100)
+        .clipShape(Capsule())
+        .fixedSize()
+    }
+
+    private func viewsPill(_ d: ShowcaseDetailData) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: "eye").font(.system(size: 14))
+            Text("\(d.viewCount ?? 0) 次浏览").font(.system(size: 12)).lineLimit(1)
+        }
+        .foregroundColor(.appMutedFg)
+        .padding(.horizontal, 10).padding(.vertical, 2)
+        .background(Color.appSecondary)
+        .clipShape(Capsule())
+        .fixedSize()
+    }
+
+    // MARK: 作者行（mt-8：来自 X 的橱窗 + Lv.N + 头衔）
+    private func authorRow(_ d: ShowcaseDetailData) -> some View {
+        NavigationLink(destination: ProfileView(userId: d.author?.id ?? 0)) {
+            HStack(spacing: 6) {
+                Text("来自 \(d.author?.name ?? "未知用户") 的橱窗")
+                    .font(.system(size: 14))
+                    .foregroundColor(.appMutedFg)
+                    .lineLimit(1)
+                LevelBadgeView(level: d.author?.level ?? 1)
+                TitleBadgeView(equippedTitle: d.author?.equippedTitle)
+                Spacer(minLength: 0)
             }
         }
+        .buttonStyle(.plain)
+        .padding(.top, 8)
     }
 
-    // MARK: 无料码区
+    // MARK: 标签行（mt-12，胶囊 4/12 padding，名字 + ·分类）
     @ViewBuilder
-    private func codeSection(_ d: ShowcaseDetailData) -> some View {
-        let canSeeCode = d.isMine == true || claimedByMe || d.myClaimStatus == "approved"
-            || (d.codeVisibility == "public")
-        SectionCard {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("无料码")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.appForeground)
-                    Spacer()
-                    if let c = codes {
-                        Text("共 \(c.count) 个")
-                            .font(.system(size: 11))
-                            .foregroundColor(.appMutedFg)
-                    }
-                }
-                if canSeeCode {
-                    if let list = codes, !list.items.isEmpty {
-                        ForEach(list.items) { c in
-                            HStack {
-                                Text(c.code)
-                                    .font(.system(size: 13, design: .monospaced))
-                                    .foregroundColor(.appForeground)
-                                    .lineLimit(1)
-                                Spacer()
-                                Button {
-                                    UIPasteboard.general.string = c.code
-                                    ToastCenter.shared.success("已复制")
-                                } label: {
-                                    Image(systemName: "doc.on.doc")
-                                        .font(.system(size: 12))
-                                        .foregroundColor(.appPrimary)
-                                }
-                            }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 7)
-                            .background(Color.appSecondary.opacity(0.4))
-                            .cornerRadius(8)
+    private func tagsRow(_ d: ShowcaseDetailData) -> some View {
+        if let tags = d.tags, !tags.isEmpty {
+            FlowLayout(spacing: 6) {
+                ForEach(tags) { t in
+                    NavigationLink(destination: TagDetailView(tagId: t.id)) {
+                        HStack(spacing: 4) {
+                            Text(t.name).foregroundColor(.appSecondaryFg)
+                            Text("·\(TagCategory.labels[t.category ?? ""] ?? (t.category ?? ""))")
+                                .foregroundColor(.appMutedFg)
                         }
-                    } else if let rc = d.rouzaoCode, !rc.isEmpty {
-                        HStack {
-                            Text(rc)
-                                .font(.system(size: 13, design: .monospaced))
-                                .foregroundColor(.appForeground)
-                            Spacer()
-                            Button {
-                                UIPasteboard.general.string = rc
-                                ToastCenter.shared.success("已复制")
-                            } label: {
-                                Image(systemName: "doc.on.doc")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.appPrimary)
-                            }
-                        }
-                    } else {
-                        Text("暂无可用无料码，点「没有了」可提醒发布人补码")
-                            .font(.system(size: 12))
-                            .foregroundColor(.appMutedFg)
-                    }
-                } else {
-                    Text(d.codeVisibility == "claim" ? "领取后可见无料码" : "无料码仅领取人可见，先去领取吧")
                         .font(.system(size: 12))
-                        .foregroundColor(.appMutedFg)
-                }
-            }
-        }
-    }
-
-    // MARK: 操作行
-    private func actionRow(_ d: ShowcaseDetailData) -> some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 8) {
-                // 点赞
-                actionButton(icon: liked ? "heart.fill" : "heart",
-                             label: "\(likeCount)",
-                             tint: liked ? .appRedFg : .appMutedFg) {
-                    Task { await toggleLike() }
-                }
-                // 我领到了
-                actionButton(icon: claimedByMe ? "checkmark.circle.fill" : "checkmark.circle",
-                             label: "我领到了",
-                             tint: claimedByMe ? .appEmeraldFg : .appMutedFg) {
-                    Task { await toggleClaim() }
-                }
-                // 收藏
-                actionButton(icon: bookmarked ? "bookmark.fill" : "bookmark",
-                             label: "清单",
-                             tint: bookmarked ? .appPrimary : .appMutedFg) {
-                    Task { await toggleBookmark() }
-                }
-                // 我想要
-                actionButton(icon: requested ? "hand.raised.fill" : "hand.raised",
-                             label: "我想要",
-                             tint: requested ? .appAmberFg : .appMutedFg) {
-                    Task { await wantIt() }
-                }
-                // 没有了
-                actionButton(icon: "bell",
-                             label: "没有了",
-                             tint: markedSoldout ? .appAmberFg : .appMutedFg) {
-                    Task { await markSoldout() }
-                }
-            }
-
-            // 主操作按钮
-            HStack(spacing: 10) {
-                if d.expired == true {
-                    Text("已失效，无法领取")
-                        .font(.system(size: 13))
-                        .foregroundColor(.appMutedFg)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 11)
+                        .padding(.horizontal, 12).padding(.vertical, 4)
                         .background(Color.appSecondary)
-                        .cornerRadius(12)
-                } else if d.isFullyClaimed == true && d.stockStatus != "restock" {
-                    Text("已领完")
-                        .font(.system(size: 13))
-                        .foregroundColor(.appMutedFg)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 11)
-                        .background(Color.appSecondary)
-                        .cornerRadius(12)
-                } else if d.isMine == true {
-                    NavigationLink(destination: ClaimsView()) {
-                        Text("查看领取申请")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.appPrimaryFg)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 11)
-                            .background(Color.appPrimary)
-                            .cornerRadius(12)
+                        .clipShape(Capsule())
                     }
                     .buttonStyle(.plain)
-                } else {
-                    Button {
-                        guard authManager.isAuthenticated else { showLogin = true; return }
-                        showClaimSheet = true
-                    } label: {
-                        Text(claimButtonLabel(d))
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.appPrimaryFg)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 11)
-                            .background(Color.appPrimary)
-                            .cornerRadius(12)
-                    }
-                    .disabled(busy || d.myClaimStatus == "pending")
                 }
+            }
+            .padding(.top, 12)
+        }
+    }
 
-                if d.addressEligible == true && d.addressSentByMe != true {
-                    Button {
-                        guard authManager.isAuthenticated else { showLogin = true; return }
-                        showAddressSheet = true
-                    } label: {
-                        Text("发地址")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.appPrimary)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 11)
-                            .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.appPrimary, lineWidth: 1))
-                    }
-                }
+    // MARK: 码区（四种形态，分支条件与网页一致）
+    @ViewBuilder
+    private func mainCodeSection(_ d: ShowcaseDetailData) -> some View {
+        if let rc = d.rouzaoCode, !rc.isEmpty {
+            rouzaoCodeBox(d, code: rc)
+        } else if d.expired == true && d.isMine != true {
+            expiredBox(d)
+        } else if (d.codeVisibility != "open" || d.quantity != nil) && d.isMine != true {
+            lockedBox(d)
+        } else {
+            externalBox(d)
+        }
+    }
 
+    // 琥珀色限定提示条
+    private func limitedNotice() -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "lock").font(.system(size: 14))
+            Text("限定橱窗一码一物，请勿告知他人")
+                .font(.system(size: 12, weight: .medium))
+        }
+        .foregroundColor(.fixAmber700)
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.fixAmber100.opacity(0.6))
+        .cornerRadius(3)
+        .overlay(RoundedRectangle(cornerRadius: 3).stroke(Color.fixAmber200, lineWidth: 1))
+    }
+
+    // 分隔线块：border-t + pt-8 + mt-8
+    private func hairline<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Rectangle().fill(Color.appBorder.opacity(0.6)).frame(height: 1)
+            content().padding(.top, 8)
+        }
+        .padding(.top, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func platformHint(_ d: ShowcaseDetailData) -> String {
+        switch d.platform {
+        case "rouzao":   return "复制后打开柔造小程序，粘贴即可下单同款。领取通常需自付制作与邮费。"
+        case "yingtang": return "复制后到映糖粘贴领取。领取通常需自付制作与邮费。"
+        default:         return "复制后按发布人说明领取。"
+        }
+    }
+
+    private func claimModeNote(_ d: ShowcaseDetailData) -> String {
+        switch d.claimMode {
+        case "instant":
+            return "你已设置「限量·无需审批」，访客点「领取」即自动解锁，无需你审批，领完即止。"
+        case "points":
+            return "你已设置「积分解锁」，访客支付 \(d.pointCost ?? 0) 积分即自动解锁（积分转入你的账户），无需审批，领完即止。"
+        default:
+            let t = d.codeVisibility == "request" ? "申请领取" : "凭证解锁"
+            return "你已设置「\(t)」，访客需申请并经你批准后可见。审核入口在个人页「领取申请」。"
+        }
+    }
+
+    private func expiryNote(_ d: ShowcaseDetailData) -> String {
+        if d.expired == true {
+            return "该橱窗已于 \(d.expiresAtText ?? "") 失效，访客已无法查看/领取；如需重新开放，可在编辑中清除或延后限时。"
+        }
+        return "你设置了限时：\(d.expiresAtText ?? "") 后失效，届时访客将无法再查看/领取。"
+    }
+
+    // 形态一：有平台码（本人/公开可见）
+    private func rouzaoCodeBox(_ d: ShowcaseDetailData, code: String) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if d.codeVisibility != "open" {
+                limitedNotice().padding(.bottom, 12)
+            }
+            Text("\(PlatformLabel.of(d.platform))码")
+                .font(.system(size: 12))
+                .foregroundColor(.appMutedFg)
+            HStack(alignment: .center, spacing: 12) {
+                Text(code)
+                    .font(.system(size: 18, weight: .semibold, design: .monospaced))
+                    .tracking(0.45)
+                    .foregroundColor(.appForeground)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
                 Button {
-                    showRepostSheet = true
+                    UIPasteboard.general.string = code
+                    ToastCenter.shared.success("已复制")
                 } label: {
-                    Text("返图")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(.appPrimary)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 11)
-                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.appPrimary, lineWidth: 1))
+                    HStack(spacing: 4) {
+                        Image(systemName: "doc.on.doc").font(.system(size: 16))
+                        Text("一键复制").font(.system(size: 14, weight: .medium))
+                    }
+                    .foregroundColor(.appPrimaryFg)
+                    .padding(.horizontal, 16).frame(height: 36)
+                    .background(Color.appPrimary)
+                    .clipShape(Capsule())
+                    .shadow(color: .black.opacity(0.05), radius: 1, y: 1)
                 }
+                .buttonStyle(.plain)
+                .fixedSize()
+            }
+            .padding(.top, 6)
+            Text(platformHint(d))
+                .font(.system(size: 11))
+                .lineSpacing(5)
+                .foregroundColor(.appMutedFg)
+                .padding(.top, 8)
+            if d.isMine == true, let qty = d.quantity {
+                hairline {
+                    let rem = d.remaining ?? 0
+                    let color: Color = d.isFullyClaimed == true ? .fixRed500 : .appEmerald
+                    (Text("余量：") +
+                     Text("\(rem)/\(qty)").fontWeight(.semibold).foregroundColor(color) +
+                     Text(d.isFullyClaimed == true ? "（已领完）" : "（已领 \(qty - rem) 份）"))
+                        .font(.system(size: 11))
+                        .foregroundColor(.appMutedFg)
+                }
+            }
+            if d.isMine == true, d.codeVisibility != "open" {
+                hairline {
+                    Text(claimModeNote(d))
+                        .font(.system(size: 11)).lineSpacing(5).foregroundColor(.appMutedFg)
+                }
+            }
+            if d.isMine == true, d.expiresAt != nil {
+                hairline {
+                    Text(expiryNote(d))
+                        .font(.system(size: 11)).lineSpacing(5).foregroundColor(.appMutedFg)
+                }
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.appCard)
+        .cornerRadius(4)
+        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 1))
+        .padding(.top, 24)
+    }
+
+    // 形态二：已失效（访客视角，zinc 灰框）
+    private func expiredBox(_ d: ShowcaseDetailData) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: "timer").font(.system(size: 16)).foregroundColor(.fixZinc500)
+                Text("已失效").font(.system(size: 14, weight: .medium)).foregroundColor(.fixZinc600)
+            }
+            Text("这是限时橱窗，已于 \(d.expiresAtText ?? "") 失效，不能再领取。")
+                .font(.system(size: 11)).lineSpacing(5).foregroundColor(.appMutedFg)
+                .padding(.top, 6)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.fixZinc50)
+        .cornerRadius(4)
+        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.fixZinc200, lineWidth: 1))
+        .padding(.top, 24)
+    }
+
+    // 形态三：锁定框（需解锁/限量，访客视角）
+    private func lockedBox(_ d: ShowcaseDetailData) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: "lock").font(.system(size: 16)).foregroundColor(.appPrimary)
+                Text(lockHeadTitle(d))
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.appForeground)
+                Spacer(minLength: 0)
+                if let q = d.quantity {
+                    Text("剩 \(d.remaining ?? 0)/\(q)")
+                        .font(.system(size: 11))
+                        .foregroundColor(.appMutedFg)
+                        .padding(.horizontal, 8).padding(.vertical, 2)
+                        .background(Color.appSecondary)
+                        .clipShape(Capsule())
+                        .fixedSize()
+                }
+            }
+            lockBody(d).padding(.top, 12)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.appCard)
+        .cornerRadius(4)
+        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 1))
+        .padding(.top, 24)
+    }
+
+    private func lockHeadTitle(_ d: ShowcaseDetailData) -> String {
+        if d.claimMode == "points" { return "需 \(d.pointCost ?? 0) 积分解锁" }
+        return d.platform == "external" ? "外部无料 · 限量领取" : "分享码需解锁"
+    }
+
+    // 全宽胶囊主按钮（锁定框内）
+    private func fullPill(icon: String, label: String, bg: Color, fg: Color,
+                          enabled: Bool = true, action: @escaping () -> Void = {}) -> some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: icon).font(.system(size: 16))
+                Text(label).font(.system(size: 14, weight: .medium))
+            }
+            .foregroundColor(fg)
+            .frame(maxWidth: .infinity)
+            .frame(height: 36)
+            .background(bg)
+            .clipShape(Capsule())
+            .shadow(color: enabled ? .black.opacity(0.05) : .clear, radius: 1, y: 1)
+            .opacity(enabled ? 1 : 0.6)
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+    }
+
+    private func disabledPill(icon: String, label: String) -> some View {
+        fullPill(icon: icon, label: label, bg: .appSecondary, fg: .appSecondaryFg, enabled: false)
+    }
+
+    @ViewBuilder
+    private func lockBody(_ d: ShowcaseDetailData) -> some View {
+        let st = d.myClaimStatus
+        if st == "approved" {
+            VStack(alignment: .leading, spacing: 0) {
+                limitedNotice().padding(.bottom, 12)
+                disabledPill(icon: "checkmark", label: "已领取 ✓")
+                (Text("该无料没有平台码，发布人会与你联系发放；也可以主动") +
+                 Text("私信发布人").foregroundColor(.appPrimary) +
+                 Text("沟通。"))
+                    .font(.system(size: 11)).lineSpacing(5).foregroundColor(.appMutedFg)
+                    .padding(.top, 8)
+                    .onTapGesture { showDmAuthor = true }
+            }
+        } else if d.isFullyClaimed == true {
+            VStack(alignment: .leading, spacing: 0) {
+                disabledPill(icon: "xmark.circle", label: "已领完")
+                Text("该橱窗限量 \(d.quantity ?? 0) 份，已全部领完。")
+                    .font(.system(size: 11)).lineSpacing(5).foregroundColor(.appMutedFg)
+                    .padding(.top, 8)
+            }
+        } else if d.claimMode == "points" {
+            VStack(alignment: .leading, spacing: 0) {
+                fullPill(icon: "centsign.circle", label: "支付 \(d.pointCost ?? 0) 积分解锁",
+                         bg: .appAmber, fg: .white) {
+                    Task { await unlockClaim() }
+                }
+                Text("解锁后积分转给发布者，无需审批"
+                     + (d.quantity != nil ? "，限量 \(d.quantity ?? 0) 份领完即止" : "")
+                     + (d.platform == "external" ? "；解锁后即可一键发送地址" : "，分享码立即露出") + "。")
+                    .font(.system(size: 11)).lineSpacing(5).foregroundColor(.appMutedFg)
+                    .padding(.top, 8)
+            }
+        } else if d.claimMode == "instant" {
+            VStack(alignment: .leading, spacing: 0) {
+                fullPill(icon: "shippingbox", label: "领取", bg: .appPrimary, fg: .appPrimaryFg) {
+                    Task { await unlockClaim() }
+                }
+                Text("无需审批：点击「领取」分享码立即解锁，每人限领一次"
+                     + (d.quantity != nil ? "，限量 \(d.quantity ?? 0) 份领完即止" : "") + "。")
+                    .font(.system(size: 11)).lineSpacing(5).foregroundColor(.appMutedFg)
+                    .padding(.top, 8)
+            }
+        } else if st == "pending" {
+            VStack(alignment: .leading, spacing: 0) {
+                disabledPill(icon: "hourglass", label: "申请审核中")
+                Text("发布人正在审核你的申请，结果会通过站内信通知你。")
+                    .font(.system(size: 11)).lineSpacing(5).foregroundColor(.appMutedFg)
+                    .padding(.top, 8)
+            }
+        } else {
+            let credential = (d.quantity != nil && d.claimMode == "request") || d.codeVisibility == "credential"
+            VStack(alignment: .leading, spacing: 0) {
+                fullPill(icon: "lock", label: "申请领取", bg: .appPrimary, fg: .appPrimaryFg) {
+                    guard authManager.isAuthenticated else { showLogin = true; return }
+                    showClaimSheet = true
+                }
+                Text(credential
+                     ? "需上传凭证（照片或文字，至少一项）供发布人审核，通过后分享码自动解锁。"
+                     : "点击申请，发布人批准后分享码自动解锁，结果会通过站内信通知你。")
+                    .font(.system(size: 11)).lineSpacing(5).foregroundColor(.appMutedFg)
+                    .padding(.top, 8)
             }
         }
     }
 
-    private func claimButtonLabel(_ d: ShowcaseDetailData) -> String {
-        switch d.claimMode {
-        case "points": return "积分解锁（\(d.pointCost ?? 0) 积分）"
-        case "instant": return "立即领取"
-        default:
-            if d.myClaimStatus == "pending" { return "申请审核中" }
-            if d.myClaimStatus == "approved" { return "已通过" }
-            return "申请领取"
+    // 形态四：外部无料 · 无平台码（虚线框）
+    private func externalBox(_ d: ShowcaseDetailData) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Text("外部无料 · 无平台码")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.appForeground)
+                if d.shippingFree == true {
+                    shipBadge("包邮", bg: .fixEmerald100, fg: .fixEmerald700, brd: .fixEmerald300)
+                }
+                if d.shippingFree == false {
+                    shipBadge("不包邮", bg: .fixAmber100, fg: .fixAmber700, brd: .fixAmber300)
+                }
+                Spacer(minLength: 0)
+                if let q = d.quantity {
+                    Text(d.isFullyClaimed == true ? "已领完" : "剩 \(d.remaining ?? 0)/\(q)")
+                        .font(.system(size: 11))
+                        .foregroundColor(.appMutedFg)
+                        .padding(.horizontal, 8).padding(.vertical, 2)
+                        .background(Color.appSecondary)
+                        .clipShape(Capsule())
+                        .fixedSize()
+                }
+            }
+            Text(externalNote(d))
+                .font(.system(size: 11)).lineSpacing(5).foregroundColor(.appMutedFg)
+                .padding(.top, 4)
         }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.appCard)
+        .cornerRadius(4)
+        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, style: StrokeStyle(lineWidth: 1, dash: [6])))
+        .padding(.top, 24)
     }
 
-    private func actionButton(icon: String, label: String, tint: Color, action: @escaping () -> Void) -> some View {
+    private func shipBadge(_ text: String, bg: Color, fg: Color, brd: Color) -> some View {
+        Text(text)
+            .font(.system(size: 11, weight: .bold))
+            .foregroundColor(fg)
+            .padding(.horizontal, 8).padding(.vertical, 2)
+            .background(bg)
+            .clipShape(Capsule())
+            .overlay(Capsule().stroke(brd, lineWidth: 1))
+            .fixedSize()
+    }
+
+    private func externalNote(_ d: ShowcaseDetailData) -> String {
+        if d.isMine == true {
+            return d.quantity != nil
+                ? "该无料不走柔造/映糖，已开启限量：访客需在上方点「领取」（或提交凭证经你批准）后计为已领，领完即止。"
+                : "该无料不走柔造/映糖。访客点「我想领」后可一键发送收货地址，地址会出现在下方「收到的地址」后台和站内信「地址」分类（不发邮件）。"
+        }
+        if d.isFullyClaimed == true { return "该无料已领完。" }
+        if d.addressSentByMe == true { return "你的收货地址已发送给发布者，请等待对方联系你寄件。" }
+        if d.myRequested == true { return "已记录你想领。点下方「发送地址给发布者」，一键把收货地址发给对方（需先在「设置 → 地址」填好地址）。" }
+        return "该无料不走柔造/映糖，点下方「我想领」即可；点完刷新一下页面，就能在这里一键发送收货地址给发布者。"
+    }
+
+    // MARK: 操作栏（mt-20，flex-wrap gap-8 胶囊横排 + 右侧 编辑/删除/举报）
+    private func actionsRow(_ d: ShowcaseDetailData) -> some View {
+        FlowLayout(spacing: 8) {
+            // 点赞（激活：主色描边 + 10% 底 + 实心 + 600）
+            actPill(icon: liked ? "heart.fill" : "heart",
+                    label: "\(likeCount) 点赞",
+                    tint: liked ? .appPrimary : .appForeground,
+                    bg: liked ? Color.appPrimary.opacity(0.1) : .appCard,
+                    brd: liked ? .appPrimary : .appBorder,
+                    active: liked) { Task { await toggleLike() } }
+            // 我领到了（激活：翠绿描边 + 浅绿底 + EM700）
+            actPill(icon: "shippingbox",
+                    label: (claimedByMe ? "已领到 ✓" : "我领到了") + ((d.claimCount ?? 0) > 0 ? " · \(d.claimCount ?? 0)" : ""),
+                    tint: claimedByMe ? .fixEmerald700 : .appForeground,
+                    bg: claimedByMe ? .fixEmerald100 : .appCard,
+                    brd: claimedByMe ? .appEmerald : .appBorder,
+                    active: claimedByMe) { Task { await toggleClaim() } }
+            // 我想领 / 收到的想要
+            if d.isMine == true {
+                actPillLink(icon: "hand.raised",
+                            label: "收到的想要" + ((d.wantCount ?? 0) > 0 ? " · \(d.wantCount ?? 0)" : ""),
+                            dest: ClaimsView(initialTab: 1))
+            } else if requested || d.isFullyClaimed == true {
+                actPill(icon: "hand.raised",
+                        label: d.isFullyClaimed == true ? "已领完" : "已想领 ✓",
+                        tint: .appMutedFg, bg: .appSecondary, brd: .appBorder) {}
+            } else {
+                // 深色实心：foreground 底 + background 字
+                actPill(icon: "hand.raised", label: "我想领",
+                        suffix: d.remaining.map { "（剩 \($0)）" },
+                        tint: .appBackground, bg: .appForeground, brd: nil) { Task { await wantIt() } }
+            }
+            // 清单（激活态同点赞）
+            actPill(icon: bookmarked ? "bookmark.fill" : "bookmark",
+                    label: bookmarked ? "已在清单" : "加入清单",
+                    tint: bookmarked ? .appPrimary : .appForeground,
+                    bg: bookmarked ? Color.appPrimary.opacity(0.1) : .appCard,
+                    brd: bookmarked ? .appPrimary : .appBorder,
+                    active: bookmarked) { Task { await toggleBookmark() } }
+            // 返图
+            actPill(icon: "camera", label: "返图") { showRepostSheet = true }
+            // 分享（点按复制链接并打点）
+            actPill(icon: "square.and.arrow.up",
+                    label: "分享" + ((d.shareCount ?? 0) > 0 ? " · \(d.shareCount ?? 0)" : "")) {
+                Task { await shareLink() }
+            }
+            // 没有了（外部无料不显示）
+            if d.platform != "external" {
+                if d.isMine == true {
+                    actPillLink(icon: "nosign",
+                                label: (d.soldoutCount ?? 0) > 0 ? "\(d.soldoutCount ?? 0) 人反馈没有了" : "没有了",
+                                tint: .appMutedFg,
+                                dest: ClaimsView(initialTab: 2))
+                } else if markedSoldout {
+                    actPill(icon: "nosign", label: "已反馈没有了",
+                            tint: .appMutedFg, bg: .appSecondary, brd: .appBorder) {}
+                } else {
+                    actPill(icon: "nosign",
+                            label: "没有了" + ((d.soldoutCount ?? 0) > 0 ? " · \(d.soldoutCount ?? 0)" : "")) {
+                        Task { await markSoldout() }
+                    }
+                }
+            }
+            // 右侧：编辑/删除（本人）+ 举报，12px MUTED
+            HStack(spacing: 12) {
+                if d.isMine == true {
+                    Button { showEdit = true } label: { miniAct("pencil", "编辑") }
+                        .buttonStyle(.plain)
+                    Button { showDeleteConfirm = true } label: { miniAct("trash", "删除") }
+                        .buttonStyle(.plain)
+                }
+                Button { showReport = true } label: { miniAct("flag", "举报") }
+                    .buttonStyle(.plain)
+            }
+        }
+        .padding(.top, 20)
+    }
+
+    private func miniAct(_ icon: String, _ label: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon).font(.system(size: 14))
+            Text(label).font(.system(size: 12))
+        }
+        .foregroundColor(.appMutedFg)
+    }
+
+    private func actPill(icon: String, label: String, suffix: String? = nil,
+                         tint: Color = .appForeground, bg: Color = .appCard,
+                         brd: Color? = .appBorder, active: Bool = false,
+                         action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            VStack(spacing: 3) {
+            HStack(spacing: 6) {
                 Image(systemName: icon).font(.system(size: 16))
-                Text(label).font(.system(size: 9))
+                Text(label).font(.system(size: 14, weight: active ? .semibold : .regular))
+                if let s = suffix { Text(s).font(.system(size: 11)).opacity(0.7) }
             }
             .foregroundColor(tint)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 8)
-            .background(Color.appCard)
-            .cornerRadius(10)
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.appBorder, lineWidth: 0.5))
+            .padding(.horizontal, 16).padding(.vertical, 8)
+            .background(bg)
+            .clipShape(Capsule())
+            .overlay(Capsule().stroke(brd ?? .clear, lineWidth: brd == nil ? 0 : 1))
         }
         .buttonStyle(.plain)
     }
 
-    // MARK: 返图区
-    private func repostSection(_ d: ShowcaseDetailData) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("返图（\(reposts.count)）")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.appForeground)
-                Spacer()
+    private func actPillLink<Dest: View>(icon: String, label: String,
+                                         tint: Color = .appForeground,
+                                         bg: Color = .appCard, brd: Color? = .appBorder,
+                                         dest: Dest) -> some View {
+        NavigationLink(destination: dest) {
+            HStack(spacing: 6) {
+                Image(systemName: icon).font(.system(size: 16))
+                Text(label).font(.system(size: 14))
             }
-            if reposts.isEmpty {
-                Text("还没有返图，领到后晒一张吧")
-                    .font(.system(size: 12))
+            .foregroundColor(tint)
+            .padding(.horizontal, 16).padding(.vertical, 8)
+            .background(bg)
+            .clipShape(Capsule())
+            .overlay(Capsule().stroke(brd ?? .clear, lineWidth: brd == nil ? 0 : 1))
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: 补码区（mt-24：锁定态 / 列表态 + 本人输入行）
+    @ViewBuilder
+    private func codeSection(_ d: ShowcaseDetailData) -> some View {
+        if let c = codes {
+            if c.locked && c.count > 0 {
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "lock").font(.system(size: 16)).foregroundColor(.appPrimary)
+                        Text("补码区").font(.system(size: 14, weight: .medium)).foregroundColor(.appForeground)
+                        Text("· \(c.count) 个码已锁定").font(.system(size: 12)).foregroundColor(.appMutedFg)
+                    }
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: d.myClaimStatus == "pending" ? "hourglass" : "lock")
+                            .font(.system(size: 16))
+                        Text(d.myClaimStatus == "pending"
+                             ? "你的申请正在审核中，通过后补码与分享码将一起解锁。"
+                             : "该橱窗的分享码需申请解锁，通过上方申请后即可查看全部补码。")
+                            .font(.system(size: 13))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     .foregroundColor(.appMutedFg)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 20)
-                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.appBorder, style: StrokeStyle(lineWidth: 1, dash: [6])))
-            } else {
-                ForEach(reposts) { r in
-                    SectionCard {
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack(spacing: 8) {
-                                AvatarView(path: r.userAvatar, name: r.userName ?? "", size: 24)
-                                Text(r.userName ?? "")
-                                    .font(.system(size: 12, weight: .medium))
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.appBackground)
+                    .cornerRadius(3)
+                    .overlay(RoundedRectangle(cornerRadius: 3).stroke(Color.appBorder, style: StrokeStyle(lineWidth: 1, dash: [6])))
+                    .padding(.top, 12)
+                }
+                .padding(16)
+                .background(Color.appCard)
+                .cornerRadius(4)
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 1))
+                .padding(.top, 24)
+            } else if d.isMine == true || !c.items.isEmpty {
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "ticket").font(.system(size: 16)).foregroundColor(.appPrimary)
+                        Text("补码区").font(.system(size: 14, weight: .medium)).foregroundColor(.appForeground)
+                        if !c.items.isEmpty {
+                            Text("· \(c.items.count) 个码").font(.system(size: 12)).foregroundColor(.appMutedFg)
+                        }
+                    }
+                    ForEach(Array(c.items.reversed().enumerated()), id: \.element.id) { idx, item in
+                        HStack(spacing: 12) {
+                            Text(idx == 0 ? "最新" : "#\(c.items.count - idx)")
+                                .font(.system(size: 11))
+                                .foregroundColor(.appMutedFg)
+                                .padding(.horizontal, 8).padding(.vertical, 2)
+                                .background(Color.appSecondary)
+                                .clipShape(Capsule())
+                                .fixedSize()
+                            Text(item.code)
+                                .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                                .foregroundColor(.appForeground)
+                                .lineLimit(2)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            Button {
+                                UIPasteboard.general.string = item.code
+                                ToastCenter.shared.success("已复制")
+                            } label: {
+                                Image(systemName: "doc.on.doc").font(.system(size: 16)).foregroundColor(.appMutedFg)
+                            }
+                            .buttonStyle(.plain)
+                            if d.isMine == true {
+                                Button { Task { await deleteCode(item.id) } } label: {
+                                    Image(systemName: "trash").font(.system(size: 16)).foregroundColor(.appMutedFg)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 12).padding(.vertical, 10)
+                        .background(Color.appBackground)
+                        .cornerRadius(3)
+                        .overlay(RoundedRectangle(cornerRadius: 3).stroke(Color.appBorder.opacity(0.7), lineWidth: 1))
+                        .padding(.top, 8)
+                    }
+                    if d.isMine == true {
+                        HStack(spacing: 8) {
+                            TextField("粘贴新的分享码", text: $newCode)
+                                .font(.system(size: 14, design: .monospaced))
+                                .padding(.horizontal, 12)
+                                .frame(height: 36)
+                                .overlay(RoundedRectangle(cornerRadius: 2).stroke(Color.appInput, lineWidth: 1))
+                            Button { Task { await addCode() } } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "plus").font(.system(size: 16))
+                                    Text("补码").font(.system(size: 14, weight: .medium))
+                                }
+                                .foregroundColor(.appPrimaryFg)
+                                .padding(.horizontal, 16).frame(height: 36)
+                                .background(Color.appPrimary.opacity(newCode.trimmingCharacters(in: .whitespaces).isEmpty ? 0.5 : 1))
+                                .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(newCode.trimmingCharacters(in: .whitespaces).isEmpty || busy)
+                        }
+                        .padding(.top, 12)
+                        Text("补码后，点过「我想要」和「没有了」的用户会收到站内信 + 邮件通知。")
+                            .font(.system(size: 11)).lineSpacing(5).foregroundColor(.appMutedFg)
+                            .padding(.top, 8)
+                    }
+                }
+                .padding(16)
+                .background(Color.appCard)
+                .cornerRadius(4)
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 1))
+                .padding(.top, 24)
+            }
+        }
+    }
+
+    // MARK: 收到的地址（仅本人 + 外部无料，默认折叠）
+    @ViewBuilder
+    private func addressSection(_ d: ShowcaseDetailData) -> some View {
+        if d.isMine == true, d.platform == "external" {
+            VStack(alignment: .leading, spacing: 0) {
+                Button { withAnimation { addressExpanded.toggle() } } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "mappin").font(.system(size: 16)).foregroundColor(.appPrimary)
+                        Text("收到的地址").font(.system(size: 14, weight: .medium)).foregroundColor(.appForeground)
+                        Text("\(addresses?.items?.count ?? 0) 条")
+                            .font(.system(size: 11))
+                            .foregroundColor(.appMutedFg)
+                            .padding(.horizontal, 8).padding(.vertical, 2)
+                            .background(Color.appSecondary)
+                            .clipShape(Capsule())
+                        Spacer()
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 16))
+                            .foregroundColor(.appMutedFg)
+                            .rotationEffect(.degrees(addressExpanded ? 180 : 0))
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 12)
+                }
+                .buttonStyle(.plain)
+                if addressExpanded {
+                    let items = addresses?.items ?? []
+                    if items.isEmpty {
+                        Text("还没有人发送地址")
+                            .font(.system(size: 12))
+                            .foregroundColor(.appMutedFg)
+                            .padding(.horizontal, 16).padding(.bottom, 12)
+                    } else {
+                        ForEach(items) { it in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(it.nickname)
+                                    .font(.system(size: 13, weight: .semibold))
                                     .foregroundColor(.appForeground)
-                                Spacer()
-                                Text(DateFmt.short(r.createdAt))
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.appMutedFg)
-                            }
-                            AppImage(path: r.image)
-                                .aspectRatio(contentMode: .fit)
-                                .frame(maxWidth: .infinity)
-                                .cornerRadius(8)
-                            if let c = r.comment, !c.isEmpty {
-                                Text(c)
+                                Text(it.full ?? "\(it.address) \(it.phone)")
                                     .font(.system(size: 12))
-                                    .foregroundColor(.appForeground.opacity(0.9))
+                                    .foregroundColor(.appMutedFg)
+                                if let t = it.createdAt {
+                                    Text(DateFmt.short(t))
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.appMutedFg)
+                                }
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 16).padding(.vertical, 10)
+                            .overlay(Rectangle().fill(Color.appBorder.opacity(0.6)).frame(height: 1).padding(.horizontal, 16),
+                                     alignment: .top)
                         }
                     }
                 }
             }
+            .background(Color.appCard)
+            .cornerRadius(4)
+            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 1))
+            .padding(.top, 24)
         }
+    }
+
+    // MARK: 返图（mt-40，h2 + 两列方图）
+    @ViewBuilder
+    private func repostSection(_ d: ShowcaseDetailData) -> some View {
+        if !reposts.isEmpty {
+            VStack(alignment: .leading, spacing: 16) {
+                (Text("返图")
+                    .font(.system(size: 18, weight: .bold))
+                    .tracking(-0.45)
+                    .foregroundColor(.appForeground)
+                 + Text(" \(reposts.count) 位同好晒出了实物")
+                    .font(.system(size: 14))
+                    .foregroundColor(.appMutedFg))
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)], spacing: 16) {
+                    ForEach(reposts) { r in
+                        VStack(alignment: .leading, spacing: 6) {
+                            AppImage(path: r.image, contentMode: .fill)
+                                .aspectRatio(1, contentMode: .fill)
+                                .frame(maxWidth: .infinity)
+                                .clipped()
+                                .cornerRadius(4)
+                                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder.opacity(0.6), lineWidth: 1))
+                            HStack(alignment: .top, spacing: 8) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(r.userName ?? "匿名用户")
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundColor(.appForeground)
+                                        .lineLimit(1)
+                                    if let cm = r.comment, !cm.isEmpty {
+                                        Text(cm)
+                                            .font(.system(size: 12))
+                                            .lineSpacing(4)
+                                            .foregroundColor(.appMutedFg)
+                                            .lineLimit(2)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                if canDeleteRepost(r, d) {
+                                    Button { Task { await deleteRepost(r.id) } } label: {
+                                        Image(systemName: "trash").font(.system(size: 14)).foregroundColor(.appMutedFg)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.horizontal, 2)
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 40)
+        }
+    }
+
+    private func canDeleteRepost(_ r: RepostRow, _ d: ShowcaseDetailData) -> Bool {
+        d.isMine == true || r.userId == authManager.currentUser?.id
+    }
+
+    // MARK: 相关橱窗（mt-48，两列 ShowcaseCard）
+    @ViewBuilder
+    private func relatedSection(_ d: ShowcaseDetailData) -> some View {
+        if let related = d.related, !related.isEmpty {
+            VStack(alignment: .leading, spacing: 16) {
+                Text("相关橱窗")
+                    .font(.system(size: 18, weight: .bold))
+                    .tracking(-0.45)
+                    .foregroundColor(.appForeground)
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 20), GridItem(.flexible(), spacing: 20)], spacing: 20) {
+                    ForEach(related.prefix(6)) { item in
+                        NavigationLink(destination: ShowcaseDetailView(showcaseId: item.id)) {
+                            ShowcaseCardView(item: item)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 48)
+        }
+    }
+
+    // 隐藏导航：私信发布人
+    private var dmAuthorLink: some View {
+        NavigationLink(destination: DmThreadView(peerId: detail?.author?.id ?? 0,
+                                                 peerName: detail?.author?.name ?? ""),
+                       isActive: $showDmAuthor) { EmptyView() }
+            .hidden()
     }
 
     // MARK: 数据与操作
@@ -538,6 +987,7 @@ struct ShowcaseDetailView: View {
                 markedSoldout = (try? await MashanglingAPI.shared.soldout.mineFor(showcaseId: showcaseId)) ?? false
                 codes = try? await MashanglingAPI.shared.code.list(showcaseId: showcaseId)
             }
+            await loadAddresses()
         } catch {
             detail = nil
         }
@@ -621,6 +1071,52 @@ struct ShowcaseDetailView: View {
         } else {
             ToastCenter.shared.error("生成失败")
         }
+    }
+
+    private func loadAddresses() async {
+        guard let d = detail, d.isMine == true, d.platform == "external" else { addresses = nil; return }
+        addresses = try? await MashanglingAPI.shared.address.received(showcaseId: showcaseId)
+    }
+
+    private func addCode() async {
+        let c = newCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !c.isEmpty else { return }
+        busy = true
+        defer { busy = false }
+        do {
+            let n = try await MashanglingAPI.shared.code.add(showcaseId: showcaseId, code: c)
+            newCode = ""
+            ToastCenter.shared.success(n > 0 ? "补码成功，已通知 \(n) 人" : "补码成功")
+            codes = try? await MashanglingAPI.shared.code.list(showcaseId: showcaseId)
+        } catch { ToastCenter.shared.error(error.localizedDescription) }
+    }
+
+    private func deleteCode(_ id: Int) async {
+        do {
+            _ = try await MashanglingAPI.shared.code.remove(id: id)
+            codes = try? await MashanglingAPI.shared.code.list(showcaseId: showcaseId)
+            ToastCenter.shared.success("已删除")
+        } catch { ToastCenter.shared.error(error.localizedDescription) }
+    }
+
+    private func deleteRepost(_ id: Int) async {
+        do {
+            _ = try await MashanglingAPI.shared.repost.remove(id: id)
+            ToastCenter.shared.success("返图已删除")
+            await loadReposts()
+        } catch { ToastCenter.shared.error(error.localizedDescription) }
+    }
+
+    /// 限量即领 / 积分解锁：与网页一致，直接调 claim.create
+    private func unlockClaim() async {
+        guard authManager.isAuthenticated else { showLogin = true; return }
+        busy = true
+        defer { busy = false }
+        do {
+            _ = try await MashanglingAPI.shared.claim.create(showcaseId: showcaseId)
+            ToastCenter.shared.success("领取成功")
+            await load()
+        } catch { ToastCenter.shared.error(error.localizedDescription) }
     }
 
     private func removeShowcase() async {
