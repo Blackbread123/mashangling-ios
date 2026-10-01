@@ -1,40 +1,85 @@
 import SwiftUI
 import UIKit
 
-// MARK: - 设置（对应网页 Settings.tsx）
+// MARK: - 设置（逐行复刻网页 Settings.tsx）
 struct SettingsView: View {
     @EnvironmentObject var authManager: AuthManager
-    @StateObject private var siteTheme = SiteThemeManager.shared
 
-    @State private var data: SettingsData? = nil
+    @State private var d: SettingsData? = nil
+    @State private var loading = true
     @State private var address: AddressData? = nil
+
     @State private var name = ""
-    @State private var bio = ""
     @State private var notifyEmail = ""
-    @State private var dmBlocked = false
+    @State private var entries: [AddressData.AddressEntry] = []
+    @State private var addrFilled = false
+    @State private var alipay = ""
+    @State private var addrAgreed = UserDefaults.standard.bool(forKey: "msl-addr-agreed")
+    @State private var senderSynced = false
+
     @State private var avatarImage: UIImage? = nil
     @State private var showAvatarPicker = false
-    @State private var entries: [AddressData.AddressEntry] = []
-    @State private var senderAddress = ""
-    @State private var alipay = ""
-    @State private var busy = false
-    @State private var dmLoaded = false
-    @State private var addressAgreed = UserDefaults.standard.bool(forKey: "msl-addr-agreed")
+    @State private var uploadingAvatar = false
+    @State private var savingName = false
+    @State private var savingEmail = false
+    @State private var savingAddr = false
+    @State private var savingAlipay = false
+    @State private var dmUpdating = false
+    @State private var bindEmail = ""
+    @State private var bindPassword = ""
+    @State private var binding = false
     @State private var showDeleteAccount = false
+
+    private var nameDirty: Bool {
+        name.trimmingCharacters(in: .whitespaces) != (d?.name ?? "")
+    }
+    private var emailDirty: Bool {
+        notifyEmail.trimmingCharacters(in: .whitespaces) != (d?.notifyEmail ?? "")
+    }
+    private var alipaySaved: Bool {
+        let saved = address?.alipayAccount ?? ""
+        return !saved.isEmpty && alipay.trimmingCharacters(in: .whitespaces) == saved
+    }
 
     var body: some View {
         ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 16) {
-                profileSection
-                themeSection
-                notifySection
-                addressSection
-                securitySection
+            VStack(alignment: .leading, spacing: 0) {
+                Text("设置")
+                    .font(.system(size: 24, weight: .bold))
+                    .foregroundColor(.appForeground)
+
+                if loading {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                        Text("加载中…")
+                            .font(.system(size: 14))
+                            .foregroundColor(.appMutedFg)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 32)
+                } else if d != nil {
+                    VStack(alignment: .leading, spacing: 32) {
+                        avatarSection
+                        nameSection
+                        notifyEmailSection
+                        if (d?.email ?? "").isEmpty { bindEmailSection }
+                        addressSection
+                        alipaySection
+                        dmSection
+                    }
+                    .padding(.top, 24)
+                }
+
+                // App 新增（上架合规）：关于与协议 / 注销 / 退出
                 aboutSection
+                    .padding(.top, 32)
                 logoutSection
+                    .padding(.top, 16)
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 14)
+            .padding(.top, 32)
+            .padding(.bottom, 32)
         }
         .background(Color.appBackground)
         .navigationTitle("设置")
@@ -45,302 +90,347 @@ struct SettingsView: View {
         .onChange(of: avatarImage) { img in
             if img != nil { Task { await uploadAvatar() } }
         }
+        .onChange(of: name) { v in
+            if v.count > 30 { name = String(v.prefix(30)) }
+        }
     }
 
-    // MARK: 个人资料
-    private var profileSection: some View {
-        SectionCard {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("个人资料")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.appForeground)
-                HStack(spacing: 12) {
-                    Button { showAvatarPicker = true } label: {
-                        ZStack(alignment: .bottomTrailing) {
-                            if let img = avatarImage {
-                                Image(uiImage: img)
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                                    .frame(width: 56, height: 56)
-                                    .clipShape(Circle())
-                            } else {
-                                AvatarView(path: data?.avatar, name: data?.name ?? "", size: 56)
-                            }
-                            Image(systemName: "camera.fill")
-                                .font(.system(size: 10))
-                                .foregroundColor(.white)
-                                .padding(4)
-                                .background(Color.appPrimary)
+    private func sectionLabel(_ t: String) -> some View {
+        Text(t)
+            .font(.system(size: 14, weight: .medium))
+            .foregroundColor(.appForeground)
+            .padding(.bottom, 8)
+    }
+
+    // MARK: 头像
+    private var avatarSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionLabel("头像")
+            HStack(spacing: 16) {
+                Button { showAvatarPicker = true } label: {
+                    ZStack {
+                        if let img = avatarImage {
+                            Image(uiImage: img)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 80, height: 80)
                                 .clipShape(Circle())
+                        } else {
+                            AvatarView(path: d?.avatar, name: d?.name ?? "", size: 80)
                         }
                     }
-                    .buttonStyle(.plain)
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(data?.name ?? "")
-                            .font(.system(size: 15, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                VStack(alignment: .leading, spacing: 0) {
+                    Button { showAvatarPicker = true } label: {
+                        Text(uploadingAvatar ? "上传中…" : "更换头像")
+                            .font(.system(size: 12, weight: .medium))
                             .foregroundColor(.appForeground)
-                        Text(data?.email ?? "未绑定邮箱")
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .overlay(Capsule().stroke(Color.appBorder, lineWidth: 1))
+                    }
+                    .disabled(uploadingAvatar)
+                    Text("本地上传图片，自动压缩。")
+                        .font(.system(size: 11))
+                        .foregroundColor(.appMutedFg)
+                        .padding(.top, 6)
+                }
+            }
+        }
+    }
+
+    // MARK: 昵称
+    private var nameSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionLabel("昵称")
+            HStack(spacing: 8) {
+                AppTextField(text: $name, placeholder: "输入新昵称")
+                    .overlay(alignment: .trailing) {
+                        Text("\(name.count)/30")
                             .font(.system(size: 11))
                             .foregroundColor(.appMutedFg)
+                            .padding(.trailing, 12)
                     }
-                    Spacer()
+                Button { Task { await saveName() } } label: {
+                    Text(savingName ? "保存中…" : "保存")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.appPrimaryFg)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color.appPrimary)
+                        .clipShape(Capsule())
                 }
-                HStack(spacing: 8) {
-                    AppTextField(text: $name, placeholder: "昵称")
-                    Button { Task { await saveName() } } label: {
-                        Text("保存")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.appPrimaryFg)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 9)
-                            .background(Color.appPrimary)
-                            .clipShape(Capsule())
-                    }
-                    .disabled(busy || name.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
-                HStack(spacing: 8) {
-                    AppTextField(text: $bio, placeholder: "个人简介（一句话介绍自己）")
-                    Button { Task { await saveBio() } } label: {
-                        Text("保存")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.appPrimaryFg)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 9)
-                            .background(Color.appPrimary)
-                            .clipShape(Capsule())
-                    }
-                    .disabled(busy)
-                }
+                .disabled(!nameDirty || savingName)
+                .opacity(!nameDirty || savingName ? 0.5 : 1)
             }
+            Text("昵称是别人看到的你的名字，全站唯一，最多 30 个字（英文字母按 1 个字计）。")
+                .font(.system(size: 11))
+                .lineSpacing(2)
+                .foregroundColor(.appMutedFg)
+                .padding(.top, 6)
         }
     }
 
-    // MARK: 界面主题
-    private var themeSection: some View {
-        SectionCard {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("界面主题")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.appForeground)
-                Text("跟随账号，换设备也生效")
-                    .font(.system(size: 10))
-                    .foregroundColor(.appMutedFg)
-                HStack(spacing: 10) {
-                    ForEach(SiteThemeManager.themes, id: \.key) { t in
-                        Button { siteTheme.apply(t.key) } label: {
-                            VStack(spacing: 4) {
-                                Circle()
-                                    .fill(t.swatch)
-                                    .frame(width: 30, height: 30)
-                                    .overlay(
-                                        Circle().stroke(Color.appPrimary,
-                                                        lineWidth: siteTheme.theme == t.key ? 2.5 : 0)
-                                    )
-                                Text(t.label)
-                                    .font(.system(size: 10))
-                                    .foregroundColor(siteTheme.theme == t.key ? .appPrimary : .appMutedFg)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    Spacer()
+    // MARK: 发信邮箱
+    private var notifyEmailSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionLabel("发信邮箱")
+            HStack(spacing: 8) {
+                AppTextField(
+                    text: $notifyEmail,
+                    placeholder: (d?.email?.isEmpty == false) ? d!.email! : "输入接收通知的邮箱",
+                    keyboard: .emailAddress
+                )
+                Button { Task { await saveNotifyEmail() } } label: {
+                    Text(savingEmail ? "保存中…" : "保存")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.appPrimaryFg)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color.appPrimary)
+                        .clipShape(Capsule())
                 }
+                .disabled(!emailDirty || savingEmail)
+                .opacity(!emailDirty || savingEmail ? 0.5 : 1)
             }
+            (Text("站内通知邮件（补码提醒、每晚未读摘要等）会发到这个邮箱。")
+                .foregroundColor(.appMutedFg)
+            + Text("它与注册邮箱不同，更换发信邮箱不影响登录账号。")
+                .foregroundColor(.appForeground.opacity(0.7))
+            + Text("留空则恢复为注册邮箱。")
+                .foregroundColor(.appMutedFg))
+                .font(.system(size: 11))
+                .lineSpacing(2)
+                .padding(.top, 6)
         }
     }
 
-    // MARK: 通知与私信
-    private var notifySection: some View {
-        SectionCard {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("通知与私信")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.appForeground)
-                HStack(spacing: 8) {
-                    AppTextField(text: $notifyEmail, placeholder: "通知邮箱（接收补货/审批邮件）", keyboard: .emailAddress)
-                    Button { Task { await saveNotifyEmail() } } label: {
-                        Text("保存")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.appPrimaryFg)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 9)
-                            .background(Color.appPrimary)
-                            .clipShape(Capsule())
-                    }
-                    .disabled(busy)
+    // MARK: 绑定登录邮箱（Kimi 用户 → App 登录用；仅未绑定邮箱时显示）
+    private var bindEmailSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("绑定邮箱 · 用于 iOS App 登录")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.fixSky900)
+            Text("设置邮箱和密码后，即可在 iOS App 上用邮箱+密码登录。\n绑定后不可自行更换，如需修改请联系站长。")
+                .font(.system(size: 12))
+                .lineSpacing(3)
+                .foregroundColor(.fixSky800.opacity(0.8))
+                .padding(.top, 4)
+            VStack(spacing: 8) {
+                AppTextField(text: $bindEmail, placeholder: "输入邮箱", keyboard: .emailAddress)
+                    .background(RoundedRectangle(cornerRadius: 2).fill(Color.white))
+                AppTextField(text: $bindPassword, placeholder: "设置密码（至少 8 位）", secure: true)
+                    .background(RoundedRectangle(cornerRadius: 2).fill(Color.white))
+                Button { Task { await doBindEmail() } } label: {
+                    Text(binding ? "绑定中…" : "绑定邮箱")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.appPrimaryFg)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color.appPrimary)
+                        .clipShape(Capsule())
                 }
-                Toggle(isOn: $dmBlocked) {
-                    Text("关闭私信（任何人都无法给我发私信）")
-                        .font(.system(size: 13))
-                        .foregroundColor(.appForeground)
-                }
-                .onChange(of: dmBlocked) { v in
-                    guard dmLoaded else { return }
-                    Task { await saveDmBlocked(v) }
-                }
+                .disabled(!bindEmail.contains("@") || bindPassword.count < 8 || binding)
+                .opacity(!bindEmail.contains("@") || bindPassword.count < 8 || binding ? 0.5 : 1)
             }
+            .padding(.top, 12)
         }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.fixSky50)
+        .cornerRadius(4)
+        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.fixSky50, lineWidth: 1))
     }
 
-    // MARK: 收货地址
+    // MARK: 地址
     private var addressSection: some View {
-        SectionCard {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text("收货地址（最多 4 个）")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.appForeground)
-                    Spacer()
-                    if addressAgreed {
-                        Button { Task { await saveAddresses() } } label: {
-                            Text("保存全部")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(.appPrimaryFg)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 6)
-                                .background(Color.appPrimary)
-                                .clipShape(Capsule())
-                        }
-                        .disabled(busy)
-                    }
-                }
-                if !addressAgreed {
-                    // 对应网页 Settings.tsx 的地址免责声明：同意后才允许填写
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("地址免责声明")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.fixAmber700)
-                        Text("收货地址（昵称、手机号、详细地址）属于你的个人敏感信息。你在橱窗页点击「发送地址」后，地址将直接发送给对应橱窗的发布者，由发布者自行保管和使用，平台仅提供信息传递通道，不参与寄件过程。")
-                            .font(.system(size: 12))
-                            .foregroundColor(.appMutedFg)
-                        Text("对于发布者使用、保管不当或泄露你的地址所造成的任何损失或纠纷，平台不承担任何责任。请确认对方可信后再发送地址；如发生地址泄露或滥用，请直接与发布者协商解决，必要时通过法律途径维权。")
-                            .font(.system(size: 12))
-                            .foregroundColor(.appMutedFg)
-                        Button {
-                            addressAgreed = true
-                            UserDefaults.standard.set(true, forKey: "msl-addr-agreed")
-                        } label: {
-                            Text("我已阅读并同意，填写地址")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(.appPrimaryFg)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 9)
-                                .background(Color.appPrimary)
-                                .clipShape(Capsule())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(12)
-                    .background(Color.fixAmber100.opacity(0.5))
-                    .cornerRadius(8)
-                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.fixAmber300, lineWidth: 1))
-                } else {
-                ForEach(Array(entries.enumerated()), id: \.element.id) { idx, _ in
-                    addressEntryEditor(idx)
-                }
-                if entries.count < 4 {
-                    Button {
-                        entries.append(AddressData.AddressEntry(nickname: "", address: "", phone: ""))
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "plus")
-                            Text("添加地址")
-                        }
+        VStack(alignment: .leading, spacing: 0) {
+            sectionLabel("地址（最多 4 个，仅自己可见，非必填）")
+            if !addrAgreed {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("填写前请阅读免责声明")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.fixAmber900)
+                    Text("收货地址（昵称、手机号、详细地址）属于你的个人敏感信息。你在橱窗页点击「发送地址」后，地址将直接发送给对应橱窗的发布者，由发布者自行保管和使用，平台仅提供信息传递通道，不参与寄件过程。")
                         .font(.system(size: 12))
-                        .foregroundColor(.appPrimary)
+                        .lineSpacing(3)
+                        .foregroundColor(.fixAmber900.opacity(0.8))
+                        .padding(.top, 8)
+                    Text("对于发布者使用、保管不当或泄露你的地址所造成的任何损失或纠纷，平台不承担任何责任。请确认对方可信后再发送地址；如发生地址泄露或滥用，请直接与发布者协商解决，必要时通过法律途径维权。")
+                        .font(.system(size: 12))
+                        .lineSpacing(3)
+                        .foregroundColor(.fixAmber900.opacity(0.8))
+                        .padding(.top, 6)
+                    Button {
+                        addrAgreed = true
+                        UserDefaults.standard.set(true, forKey: "msl-addr-agreed")
+                    } label: {
+                        Text("我已阅读并同意，填写地址")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 16)
+                            .frame(height: 36)
+                            .background(Color.fixAmber500)
+                            .clipShape(Capsule())
                     }
                     .buttonStyle(.plain)
+                    .padding(.top, 12)
                 }
-                Divider()
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("寄件地址（快递后台自动预估邮费用）")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.appForeground)
-                    AppTextField(text: $senderAddress, placeholder: "如：浙江省杭州市 xx 区 xx 路 xx 号")
-                }
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("支付宝账号（补邮费收款用）")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.appForeground)
-                    HStack(spacing: 8) {
-                        AppTextField(text: $alipay, placeholder: "手机号 / 邮箱")
-                        Button { Task { await saveAlipay() } } label: {
-                            Text("保存")
+                .padding(16)
+                .background(Color.fixAmber100)
+                .cornerRadius(4)
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.fixAmber200, lineWidth: 1))
+            } else {
+                VStack(spacing: 12) {
+                    ForEach(Array(entries.enumerated()), id: \.element.id) { idx, _ in
+                        addressEntryEditor(idx)
+                    }
+                    if entries.count < 4 {
+                        HStack {
+                            Button {
+                                entries.append(AddressData.AddressEntry(nickname: "", address: "", phone: ""))
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "plus")
+                                        .font(.system(size: 12))
+                                    Text("新增地址（\(entries.count)/4）")
+                                }
                                 .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(.appForeground)
+                                .padding(.horizontal, 12)
+                                .frame(height: 32)
+                                .overlay(Capsule().stroke(Color.appBorder, lineWidth: 1))
+                            }
+                            .buttonStyle(.plain)
+                            Spacer()
+                        }
+                    }
+                    HStack {
+                        Spacer()
+                        Button { Task { await saveAddresses() } } label: {
+                            Text(savingAddr ? "保存中…" : (addrFilled ? "保存地址" : "加载中…"))
+                                .font(.system(size: 14, weight: .medium))
                                 .foregroundColor(.appPrimaryFg)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 9)
+                                .padding(.horizontal, 16)
+                                .frame(height: 36)
                                 .background(Color.appPrimary)
                                 .clipShape(Capsule())
                         }
-                        .disabled(busy)
+                        .disabled(savingAddr || !addrFilled)
+                        .opacity(savingAddr || !addrFilled ? 0.5 : 1)
                     }
                 }
-                }
+                Text("领取外部无料后，橱窗页会出现「发送地址」按钮，一键把地址发给发布者用于寄件。除你和对应橱窗的发布者外，任何人都看不到。你已同意《地址免责声明》：平台不对发布者使用或泄露地址的行为承担责任。")
+                    .font(.system(size: 11))
+                    .lineSpacing(2)
+                    .foregroundColor(.appMutedFg)
+                    .padding(.top, 6)
             }
         }
     }
 
     private func addressEntryEditor(_ idx: Int) -> some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 6) {
-                AppTextField(text: Binding(
-                    get: { entries[idx].nickname },
-                    set: { entries[idx] = AddressData.AddressEntry(nickname: $0, address: entries[idx].address, phone: entries[idx].phone) }
-                ), placeholder: "收件人")
-                AppTextField(text: Binding(
-                    get: { entries[idx].phone },
-                    set: { entries[idx] = AddressData.AddressEntry(nickname: entries[idx].nickname, address: entries[idx].address, phone: $0) }
-                ), placeholder: "手机号", keyboard: .phonePad)
-                Button { entries.remove(at: idx) } label: {
-                    Image(systemName: "trash")
-                        .font(.system(size: 12))
-                        .foregroundColor(.appMutedFg)
+        VStack(spacing: 8) {
+            HStack {
+                Text("地址 \(idx + 1)")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.appMutedFg)
+                Spacer()
+                if entries.count > 1 {
+                    Button { entries.remove(at: idx) } label: {
+                        Text("删除")
+                            .font(.system(size: 12))
+                            .foregroundColor(.appMutedFg)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             AppTextField(text: Binding(
+                get: { entries[idx].nickname },
+                set: { entries[idx] = AddressData.AddressEntry(nickname: $0, address: entries[idx].address, phone: entries[idx].phone) }
+            ), placeholder: "昵称（收件人称呼）")
+            AppTextField(text: Binding(
+                get: { entries[idx].phone },
+                set: { entries[idx] = AddressData.AddressEntry(nickname: entries[idx].nickname, address: entries[idx].address, phone: $0) }
+            ), placeholder: "手机号", keyboard: .phonePad)
+            AppTextField(text: Binding(
                 get: { entries[idx].address },
                 set: { entries[idx] = AddressData.AddressEntry(nickname: entries[idx].nickname, address: $0, phone: entries[idx].phone) }
-            ), placeholder: "详细地址")
+            ), placeholder: "地址（省市区 + 详细地址）")
         }
-        .padding(8)
-        .background(Color.appSecondary.opacity(0.3))
-        .cornerRadius(10)
+        .padding(12)
+        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 1))
     }
 
-    // MARK: 账号安全
-    private var securitySection: some View {
-        SectionCard {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("账号")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.appForeground)
-                NavigationLink(destination: BindEmailView()) {
-                    HStack {
-                        Text("绑定 / 换绑邮箱")
-                            .font(.system(size: 13))
-                            .foregroundColor(.appForeground)
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 11))
-                            .foregroundColor(.appMutedFg)
-                    }
+    // MARK: 补邮支付宝账号
+    private var alipaySection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            sectionLabel("补邮账号（仅限支付宝，仅自己可见）")
+            HStack(spacing: 8) {
+                AppTextField(text: $alipay, placeholder: "支付宝账号（手机号或邮箱）")
+                Button { Task { await saveAlipay() } } label: {
+                    Text(savingAlipay ? "保存中…" : (alipaySaved ? "已保存" : "保存"))
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(alipaySaved ? .appSecondaryFg : .appPrimaryFg)
+                        .padding(.horizontal, 16)
+                        .frame(height: 36)
+                        .background(alipaySaved ? Color.appSecondary : Color.appPrimary)
+                        .clipShape(Capsule())
                 }
-                .buttonStyle(.plain)
-                // 注销账号（App Store 上架要求：App 内提供账号删除入口）
-                Button { showDeleteAccount = true } label: {
-                    HStack {
-                        Text("注销账号")
-                            .font(.system(size: 13))
-                            .foregroundColor(.appDestructive)
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 11))
-                            .foregroundColor(.appMutedFg)
-                    }
-                }
-                .buttonStyle(.plain)
+                .disabled(savingAlipay || !addrFilled || alipay.trimmingCharacters(in: .whitespaces).isEmpty || alipaySaved)
+                .opacity(savingAlipay || !addrFilled || alipay.trimmingCharacters(in: .whitespaces).isEmpty || alipaySaved ? 0.5 : 1)
             }
+            (Text(alipaySaved ? "✓ 当前已保存此账号，修改后按钮会变为可点。 " : "")
+                .foregroundColor(.fixEmerald600)
+            + Text("发布")
+                .foregroundColor(.appMutedFg)
+            + Text("不包邮")
+                .foregroundColor(.appForeground.opacity(0.7))
+            + Text("的外部无料时，下单后系统会通过站内信和邮件把这个账号发给对应领取人用于补邮。")
+                .foregroundColor(.appMutedFg)
+            + Text("请先在支付宝「转账 → 搜索账号」里确认能搜到该账号再保存。")
+                .foregroundColor(.fixAmber600)
+            + Text("账号不会在站内公开展示，只有你和收到补邮通知的领取人能看到。")
+                .foregroundColor(.appMutedFg))
+                .font(.system(size: 11))
+                .lineSpacing(2)
+                .padding(.top, 6)
+        }
+    }
+
+    // MARK: 私信开关
+    private var dmSection: some View {
+        HStack(alignment: .top, spacing: 16) {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("私信")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.appForeground)
+                Text("关闭后其他用户无法给你发私信，个人页的「私信」按钮会隐藏；已有会话保留，重新开启即可恢复。")
+                    .font(.system(size: 11))
+                    .lineSpacing(2)
+                    .foregroundColor(.appMutedFg)
+                    .padding(.top, 4)
+            }
+            Spacer()
+            let on = !(d?.dmBlocked ?? false)
+            Button { Task { await toggleDm() } } label: {
+                ZStack(alignment: on ? .trailing : .leading) {
+                    Capsule()
+                        .fill(on ? Color.appPrimary : Color.appSecondary)
+                        .frame(width: 44, height: 24)
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: 20, height: 20)
+                        .shadow(color: .black.opacity(0.15), radius: 1, y: 1)
+                        .padding(2)
+                }
+                .frame(width: 44, height: 24)
+            }
+            .buttonStyle(.plain)
+            .disabled(dmUpdating)
+            .opacity(dmUpdating ? 0.5 : 1)
+            .animation(.easeInOut(duration: 0.15), value: on)
         }
     }
 
@@ -351,8 +441,8 @@ struct SettingsView: View {
                 Text("关于与协议")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.appForeground)
-                aboutRow("隐私政策", icon: "hand.raised", dest: AnyView(LegalView(doc: .privacy)))
-                aboutRow("用户协议与社区规范", icon: "doc.text", dest: AnyView(LegalView(doc: .terms)))
+                aboutRow("隐私政策", dest: AnyView(LegalView(doc: .privacy)))
+                aboutRow("用户协议与社区规范", dest: AnyView(LegalView(doc: .terms)))
                 Button {
                     UIPasteboard.general.string = "3495379352"
                     ToastCenter.shared.success("QQ 号已复制")
@@ -363,6 +453,18 @@ struct SettingsView: View {
                             .foregroundColor(.appForeground)
                         Spacer()
                         Image(systemName: "doc.on.doc")
+                            .font(.system(size: 11))
+                            .foregroundColor(.appMutedFg)
+                    }
+                }
+                .buttonStyle(.plain)
+                Button { showDeleteAccount = true } label: {
+                    HStack {
+                        Text("注销账号")
+                            .font(.system(size: 13))
+                            .foregroundColor(.appDestructive)
+                        Spacer()
+                        Image(systemName: "chevron.right")
                             .font(.system(size: 11))
                             .foregroundColor(.appMutedFg)
                     }
@@ -381,7 +483,7 @@ struct SettingsView: View {
         }
     }
 
-    private func aboutRow(_ title: String, icon: String, dest: AnyView) -> some View {
+    private func aboutRow(_ title: String, dest: AnyView) -> some View {
         NavigationLink(destination: dest) {
             HStack {
                 Text(title)
@@ -419,130 +521,106 @@ struct SettingsView: View {
 
     // MARK: 数据
     private func load() async {
-        data = try? await MashanglingAPI.shared.settings.get()
-        name = data?.name ?? ""
-        bio = data?.bio ?? ""
-        notifyEmail = data?.notifyEmail ?? data?.email ?? ""
-        dmBlocked = data?.dmBlocked ?? false
-        address = try? await MashanglingAPI.shared.address.get()
-        entries = address?.entries ?? []
-        senderAddress = address?.senderAddress ?? ""
-        alipay = address?.alipayAccount ?? ""
-        dmLoaded = true
+        d = try? await MashanglingAPI.shared.settings.get()
+        loading = false
+        name = d?.name ?? ""
+        notifyEmail = d?.notifyEmail ?? ""
+        let a = try? await MashanglingAPI.shared.address.get()
+        address = a
+        if let a = a, !addrFilled {
+            let list = a.entries ?? []
+            entries = list.isEmpty
+                ? [AddressData.AddressEntry(nickname: "", address: "", phone: "")]
+                : list
+            alipay = a.alipayAccount ?? ""
+            addrFilled = true
+            // 对应网页 syncSender：表单回填后把首个完整收货地址只补不写地同步为寄件地址
+            if !senderSynced {
+                senderSynced = true
+                if let first = list.first(where: {
+                    !$0.nickname.isEmpty && !$0.address.isEmpty && !$0.phone.isEmpty
+                }) {
+                    await MashanglingAPI.shared.address.saveSenderQuietly(
+                        "\(first.nickname) \(first.address) \(first.phone)", onlyIfEmpty: true)
+                }
+            }
+        }
     }
 
     private func saveName() async {
-        busy = true
-        defer { busy = false }
+        savingName = true
+        defer { savingName = false }
         do {
             _ = try await MashanglingAPI.shared.settings.updateName(name.trimmingCharacters(in: .whitespaces))
             ToastCenter.shared.success("昵称已更新")
+            d = try? await MashanglingAPI.shared.settings.get()
             await AuthManager.shared.checkAuth()
         } catch { ToastCenter.shared.error(error.localizedDescription) }
     }
 
-    private func saveBio() async {
-        busy = true
-        defer { busy = false }
-        do {
-            _ = try await MashanglingAPI.shared.settings.updateBio(bio.trimmingCharacters(in: .whitespaces))
-            ToastCenter.shared.success("简介已更新")
-        } catch { ToastCenter.shared.error(error.localizedDescription) }
-    }
-
     private func saveNotifyEmail() async {
-        busy = true
-        defer { busy = false }
+        savingEmail = true
+        defer { savingEmail = false }
         do {
             _ = try await MashanglingAPI.shared.settings.updateNotifyEmail(notifyEmail.trimmingCharacters(in: .whitespaces))
-            ToastCenter.shared.success("通知邮箱已更新")
+            ToastCenter.shared.success("发信邮箱已更新")
+            d = try? await MashanglingAPI.shared.settings.get()
         } catch { ToastCenter.shared.error(error.localizedDescription) }
     }
 
-    private func saveDmBlocked(_ v: Bool) async {
+    private func doBindEmail() async {
+        binding = true
+        defer { binding = false }
         do {
-            _ = try await MashanglingAPI.shared.settings.updateDmBlocked(v)
-            ToastCenter.shared.success(v ? "已关闭私信" : "已开启私信")
+            _ = try await MashanglingAPI.shared.settings.bindEmail(
+                email: bindEmail.trimmingCharacters(in: .whitespaces), password: bindPassword)
+            ToastCenter.shared.success("邮箱绑定成功！现在可以在 iOS App 上用邮箱+密码登录了")
+            bindEmail = ""
+            bindPassword = ""
+            d = try? await MashanglingAPI.shared.settings.get()
+        } catch { ToastCenter.shared.error(error.localizedDescription) }
+    }
+
+    private func toggleDm() async {
+        let newBlocked = !(d?.dmBlocked ?? false)
+        dmUpdating = true
+        defer { dmUpdating = false }
+        do {
+            _ = try await MashanglingAPI.shared.settings.updateDmBlocked(newBlocked)
+            ToastCenter.shared.success(newBlocked ? "已关闭私信，别人无法再私信你" : "已开启私信")
+            d = try? await MashanglingAPI.shared.settings.get()
         } catch { ToastCenter.shared.error(error.localizedDescription) }
     }
 
     private func uploadAvatar() async {
         guard let img = avatarImage, let dataURL = ImageCodec.coverDataURL(from: img) else { return }
-        busy = true
-        defer { busy = false }
+        uploadingAvatar = true
+        defer { uploadingAvatar = false }
         do {
             _ = try await MashanglingAPI.shared.settings.updateAvatar(dataURL)
             ToastCenter.shared.success("头像已更新")
+            d = try? await MashanglingAPI.shared.settings.get()
             await AuthManager.shared.checkAuth()
-            data = try? await MashanglingAPI.shared.settings.get()
         } catch { ToastCenter.shared.error(error.localizedDescription) }
     }
 
     private func saveAddresses() async {
-        let valid = entries.filter {
-            !$0.nickname.trimmingCharacters(in: .whitespaces).isEmpty &&
-            !$0.address.trimmingCharacters(in: .whitespaces).isEmpty &&
-            !$0.phone.trimmingCharacters(in: .whitespaces).isEmpty
-        }
-        busy = true
-        defer { busy = false }
+        savingAddr = true
+        defer { savingAddr = false }
         do {
-            _ = try await MashanglingAPI.shared.address.save(
-                entries: valid,
-                senderAddress: senderAddress.trimmingCharacters(in: .whitespaces).isEmpty ? nil : senderAddress)
-            entries = valid
+            _ = try await MashanglingAPI.shared.address.save(entries: entries)
             ToastCenter.shared.success("地址已保存")
+            address = try? await MashanglingAPI.shared.address.get()
         } catch { ToastCenter.shared.error(error.localizedDescription) }
     }
 
     private func saveAlipay() async {
-        busy = true
-        defer { busy = false }
+        savingAlipay = true
+        defer { savingAlipay = false }
         do {
             _ = try await MashanglingAPI.shared.address.saveAlipay(alipay.trimmingCharacters(in: .whitespaces))
-            ToastCenter.shared.success("支付宝账号已保存")
-        } catch { ToastCenter.shared.error(error.localizedDescription) }
-    }
-}
-
-// MARK: - 绑定 / 换绑邮箱
-struct BindEmailView: View {
-    @State private var email = ""
-    @State private var password = ""
-    @State private var busy = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("绑定邮箱后可以用邮箱 + 密码登录；换绑需要验证当前密码。")
-                .font(.system(size: 12))
-                .foregroundColor(.appMutedFg)
-            AppTextField(text: $email, placeholder: "新邮箱", keyboard: .emailAddress)
-            AppTextField(text: $password, placeholder: "当前密码", secure: true)
-            Button { Task { await submit() } } label: {
-                Text(busy ? "提交中…" : "确认绑定")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.appPrimaryFg)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 11)
-                    .background(Color.appPrimary)
-                    .clipShape(Capsule())
-            }
-            .disabled(email.isEmpty || password.isEmpty || busy)
-            Spacer()
-        }
-        .padding(20)
-        .background(Color.appBackground)
-        .navigationTitle("绑定邮箱")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-
-    private func submit() async {
-        busy = true
-        defer { busy = false }
-        do {
-            _ = try await MashanglingAPI.shared.settings.bindEmail(
-                email: email.trimmingCharacters(in: .whitespaces), password: password)
-            ToastCenter.shared.success("邮箱绑定成功")
+            ToastCenter.shared.success("补邮账号已保存")
+            address = try? await MashanglingAPI.shared.address.get()
         } catch { ToastCenter.shared.error(error.localizedDescription) }
     }
 }

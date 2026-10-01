@@ -11,124 +11,136 @@ struct SearchView: View {
     @State private var cardPosts: [CardSearchResult] = []
     @State private var codeMatch: CardCodeMatch? = nil
     @State private var importing = false
-    @State private var openPostId: Int? = nil
+    @State private var showLogin = false
 
     @EnvironmentObject var authManager: AuthManager
 
     var body: some View {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                // 搜索框
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                // 搜索框（h-11 rounded-full border-input bg-card pl-10）
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
+                        .font(.system(size: 16))
                         .foregroundColor(.appMutedFg)
                     TextField("搜索无料码 / 卡片码 / 卡片标题 / 用户昵称…", text: $input)
-                        .font(.system(size: 13))
+                        .font(.system(size: 14))
                         .autocapitalization(.none)
+                        .disableAutocorrection(true)
                         .onSubmit { submit() }
-                    if !input.isEmpty {
-                        Button { input = ""; q = "" } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(.appMutedFg)
-                        }
-                    }
                 }
-                .padding(.horizontal, 14)
+                .padding(.leading, 14)
+                .padding(.trailing, 16)
                 .frame(height: 44)
                 .background(Color.appCard)
-                .overlay(Capsule().stroke(Color.appInput, lineWidth: 1))
                 .clipShape(Capsule())
+                .overlay(Capsule().stroke(Color.appInput, lineWidth: 1))
 
                 if !q.isEmpty {
                     Text("「\(q)」的搜索结果")
-                        .font(.system(size: 18, weight: .bold))
+                        .font(.system(size: 20, weight: .bold))
                         .foregroundColor(.appForeground)
+                        .padding(.top, 24)
                     Text("优先匹配无料码，其次是发布人昵称和标题/简介关键词；也可直接搜用户昵称或用户 ID")
-                        .font(.system(size: 11))
+                        .font(.system(size: 12))
                         .foregroundColor(.appMutedFg)
+                        .padding(.top, 4)
 
                     // 相关用户
                     if !matchedUsers.isEmpty {
-                        sectionTitle("相关用户")
-                        ForEach(matchedUsers) { u in
-                            NavigationLink { ProfileView(userId: u.userId) } label: {
-                                HStack(spacing: 10) {
-                                    AvatarView(path: u.avatar, name: u.name ?? "U", size: 40)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        HStack(spacing: 5) {
-                                            Text(u.name ?? "未知用户")
-                                                .font(.system(size: 13, weight: .medium))
-                                                .foregroundColor(.appForeground)
-                                            LevelBadgeView(level: u.level ?? 1)
-                                            TitleBadgeView(equippedTitle: u.equippedTitle, plain: true)
+                        Text("相关用户")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.appMutedFg)
+                            .padding(.top, 24)
+                        VStack(spacing: 10) {
+                            ForEach(matchedUsers) { u in
+                                NavigationLink { ProfileView(userId: u.userId) } label: {
+                                    HStack(spacing: 12) {
+                                        AvatarView(path: u.avatar, name: u.name ?? "U", size: 40)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            HStack(spacing: 6) {
+                                                Text(u.name ?? "未知用户")
+                                                    .font(.system(size: 14, weight: .medium))
+                                                    .foregroundColor(.appForeground)
+                                                LevelBadgeView(level: u.level ?? 1)
+                                                TitleBadgeView(equippedTitle: u.equippedTitle, plain: true)
+                                            }
+                                            Text("ID: \(u.userId) · \(u.followerCount ?? 0) 粉丝\((u.bio?.isEmpty == false) ? " · \(u.bio!)" : "")")
+                                                .font(.system(size: 12))
+                                                .foregroundColor(.appMutedFg)
+                                                .lineLimit(1)
                                         }
-                                        Text("ID: \(u.userId) · \(u.followerCount ?? 0) 粉丝\((u.bio?.isEmpty == false) ? " · \(u.bio!)" : "")")
-                                            .font(.system(size: 11))
-                                            .foregroundColor(.appMutedFg)
-                                            .lineLimit(1)
+                                        Spacer()
                                     }
-                                    Spacer()
+                                    .padding(12)
+                                    .background(Color.appCard)
+                                    .cornerRadius(4)
+                                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 1))
                                 }
-                                .padding(12)
-                                .background(Color.appCard)
-                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.appBorder, lineWidth: 0.5))
-                                .cornerRadius(12)
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
                         }
+                        .padding(.top, 8)
                     }
 
                     // 相关标签
                     if !matchedTags.isEmpty {
-                        sectionTitle("相关标签")
+                        Text("相关标签")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.appMutedFg)
+                            .padding(.top, 24)
                         FlowLayout(spacing: 6) {
                             ForEach(matchedTags) { t in
                                 NavigationLink { TagDetailView(tagId: t.id) } label: {
-                                    HStack(spacing: 3) {
+                                    HStack(spacing: 4) {
                                         Text("# \(t.name)")
-                                            .font(.system(size: 11))
                                         Text("·\(TagCategory.label(t.category))")
-                                            .font(.system(size: 10))
                                             .foregroundColor(.appMutedFg)
                                     }
+                                    .font(.system(size: 12))
                                     .foregroundColor(.appForeground)
                                     .padding(.horizontal, 12)
                                     .padding(.vertical, 6)
                                     .background(Color.appCard)
+                                    .clipShape(Capsule())
                                     .overlay(Capsule().stroke(Color.appBorder, lineWidth: 1))
                                 }
+                                .buttonStyle(.plain)
                             }
                         }
+                        .padding(.top, 8)
                     }
 
                     // 卡片码精确匹配
                     if let m = codeMatch {
-                        HStack(spacing: 5) {
+                        HStack(spacing: 6) {
                             Image(systemName: "megaphone")
-                                .font(.system(size: 12))
+                                .font(.system(size: 14))
                             Text("卡片码匹配")
                         }
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.system(size: 14, weight: .medium))
                         .foregroundColor(.appMutedFg)
+                        .padding(.top, 24)
 
-                        HStack(spacing: 14) {
+                        HStack(spacing: 16) {
                             if let cfg = m.config {
                                 CardThemeThumbnailView(config: cfg)
                                     .frame(width: 84, height: 112)
-                                    .cornerRadius(10)
-                                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.appBorder, lineWidth: 0.5))
+                                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 1))
                             }
-                            VStack(alignment: .leading, spacing: 4) {
+                            VStack(alignment: .leading, spacing: 0) {
                                 Text(m.name)
-                                    .font(.system(size: 13, weight: .bold))
+                                    .font(.system(size: 14, weight: .bold))
                                     .foregroundColor(.appForeground)
                                     .lineLimit(1)
                                 Text("来自 \(m.ownerName ?? "未知用户") 的设计")
-                                    .font(.system(size: 11))
+                                    .font(.system(size: 12))
                                     .foregroundColor(.appMutedFg)
+                                    .padding(.top, 2)
                                 Button {
                                     guard authManager.isAuthenticated else {
-                                        ToastCenter.shared.show("请先登录")
+                                        showLogin = true
                                         return
                                     }
                                     Task { await importCard(m.code) }
@@ -136,59 +148,66 @@ struct SearchView: View {
                                     Text(importing ? "导入中…" : "导入这套卡片")
                                         .font(.system(size: 12, weight: .medium))
                                         .foregroundColor(.appPrimaryFg)
-                                        .padding(.horizontal, 14)
-                                        .padding(.vertical, 7)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 6)
                                         .background(Color.appPrimary)
                                         .clipShape(Capsule())
                                 }
                                 .disabled(importing)
+                                .padding(.top, 10)
                                 Text("导入会占用一套卡片位置（套数价格和自制相同）")
-                                    .font(.system(size: 10))
+                                    .font(.system(size: 11))
                                     .foregroundColor(.appMutedFg)
+                                    .padding(.top, 6)
                             }
                             Spacer(minLength: 0)
                         }
-                        .padding(14)
+                        .padding(16)
                         .background(Color.appCard)
-                        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.appBorder, lineWidth: 0.5))
-                        .cornerRadius(16)
+                        .cornerRadius(5)
+                        .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.appBorder, lineWidth: 1))
+                        .padding(.top, 8)
                     }
 
-                    // 卡片广场
+                    // 卡片广场结果
                     if !cardPosts.isEmpty {
-                        HStack(spacing: 5) {
+                        HStack(spacing: 6) {
                             Image(systemName: "megaphone")
-                                .font(.system(size: 12))
+                                .font(.system(size: 14))
                             Text("卡片广场")
                         }
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.system(size: 14, weight: .medium))
                         .foregroundColor(.appMutedFg)
+                        .padding(.top, 24)
 
-                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                        LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
                             ForEach(cardPosts) { p in
-                                Button { openPostId = p.id } label: {
-                                    VStack(alignment: .leading, spacing: 4) {
+                                NavigationLink { CardPlazaView(initialPostId: p.id) } label: {
+                                    VStack(alignment: .leading, spacing: 0) {
                                         ZStack(alignment: .topLeading) {
                                             if let cfg = p.config {
                                                 CardThemeThumbnailView(config: cfg)
-                                                    .cornerRadius(10)
+                                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                                             }
                                             Text("SHOW ONLY")
-                                                .font(.system(size: 8, weight: .medium))
+                                                .font(.system(size: 9, weight: .medium))
                                                 .foregroundColor(.white)
                                                 .padding(.horizontal, 6)
-                                                .padding(.vertical, 2)
+                                                .padding(.vertical, 1)
                                                 .background(Color.black.opacity(0.55))
                                                 .clipShape(Capsule())
                                                 .padding(6)
                                         }
-                                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.appBorder, lineWidth: 0.5))
+                                        .aspectRatio(3.0 / 4.0, contentMode: .fit)
+                                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 1))
                                         Text(p.title ?? "")
-                                            .font(.system(size: 11, weight: .medium))
+                                            .font(.system(size: 12, weight: .medium))
                                             .foregroundColor(.appForeground)
                                             .lineLimit(1)
+                                            .padding(.top, 6)
                                         Text("\(p.author?.name ?? "匿名") · ❤ \(p.likeCount ?? 0) · 👁 \(p.viewCount ?? 0)")
-                                            .font(.system(size: 10))
+                                            .font(.system(size: 11))
                                             .foregroundColor(.appMutedFg)
                                             .lineLimit(1)
                                     }
@@ -196,36 +215,29 @@ struct SearchView: View {
                                 .buttonStyle(.plain)
                             }
                         }
+                        .padding(.top, 8)
                     }
 
                     // 橱窗信息流
                     FeedView(search: q, hideSortBar: false)
                         .id(q)
+                        .padding(.top, 16)
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 16)
+            .padding(.top, 24)
+            .padding(.bottom, 24)
         }
         .background(Color.appBackground.ignoresSafeArea())
         .navigationTitle("搜索")
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented: Binding(get: { openPostId != nil }, set: { if !$0 { openPostId = nil } })) {
-            if let pid = openPostId {
-                CardDetailSheet(postId: pid) { }
-            }
-        }
+        .sheet(isPresented: $showLogin) { LoginView() }
         .onAppear {
             if q.isEmpty && !initialQuery.isEmpty {
                 input = initialQuery
                 submit()
             }
         }
-    }
-
-    private func sectionTitle(_ t: String) -> some View {
-        Text(t)
-            .font(.system(size: 13, weight: .medium))
-            .foregroundColor(.appMutedFg)
     }
 
     private func submit() {
@@ -266,44 +278,52 @@ struct TagDetailView: View {
     @State private var showReport = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .bottom, spacing: 8) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 8) {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .bottom, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        HStack(spacing: 10) {
                             Text("# \(tag?.name ?? "…")")
-                                .font(.system(size: 21, weight: .bold))
+                                .font(.system(size: 24, weight: .bold))
                                 .foregroundColor(.appForeground)
                             if let t = tag {
                                 Text(TagCategory.label(t.category))
-                                    .font(.system(size: 11))
+                                    .font(.system(size: 12))
                                     .foregroundColor(.appSecondaryFg)
-                                    .padding(.horizontal, 9)
-                                    .padding(.vertical, 3)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 2)
                                     .background(Color.appSecondary)
                                     .clipShape(Capsule())
                             }
                         }
                         if let t = tag {
                             Text("共 \(t.showcaseCount ?? 0) 个橱窗 · 本周新增 \(t.weekNew ?? 0)")
-                                .font(.system(size: 12))
+                                .font(.system(size: 14))
                                 .foregroundColor(.appMutedFg)
+                                .padding(.top, 6)
                         }
                     }
                     Spacer()
                     if tag != nil {
                         Button { showReport = true } label: {
-                            Image(systemName: "flag")
-                                .font(.system(size: 12))
-                                .foregroundColor(.appMutedFg)
+                            HStack(spacing: 4) {
+                                Image(systemName: "flag")
+                                    .font(.system(size: 12))
+                                Text("举报")
+                            }
+                            .font(.system(size: 12))
+                            .foregroundColor(.appMutedFg)
                         }
+                        .buttonStyle(.plain)
                     }
                 }
+                .padding(.bottom, 24)
 
                 FeedView(tagId: tagId, hideSortBar: false)
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 16)
+            .padding(.top, 24)
+            .padding(.bottom, 24)
         }
         .background(Color.appBackground.ignoresSafeArea())
         .navigationBarTitleDisplayMode(.inline)

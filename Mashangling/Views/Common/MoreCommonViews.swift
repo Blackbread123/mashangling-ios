@@ -23,10 +23,9 @@ struct AppTextField: View {
         .autocapitalization(.none)
         .disableAutocorrection(true)
         .padding(.horizontal, 12)
-        .frame(height: 40)
-        .background(Color.appCard)
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.appInput, lineWidth: 1))
-        .cornerRadius(10)
+        .frame(height: 36)
+        .overlay(RoundedRectangle(cornerRadius: 2).stroke(Color.appInput, lineWidth: 1))
+        .cornerRadius(2)
     }
 }
 
