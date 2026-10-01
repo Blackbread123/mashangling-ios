@@ -20,6 +20,7 @@ struct SettingsView: View {
     @State private var busy = false
     @State private var dmLoaded = false
     @State private var addressAgreed = UserDefaults.standard.bool(forKey: "msl-addr-agreed")
+    @State private var showDeleteAccount = false
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -29,6 +30,7 @@ struct SettingsView: View {
                 notifySection
                 addressSection
                 securitySection
+                aboutSection
                 logoutSection
             }
             .padding(.horizontal, 16)
@@ -40,6 +42,7 @@ struct SettingsView: View {
         .task { await load() }
         .overlay(ToastOverlay())
         .sheet(isPresented: $showAvatarPicker) { ImagePicker(image: $avatarImage) }
+        .sheet(isPresented: $showDeleteAccount) { DeleteAccountSheet() }
         .onChange(of: avatarImage) { img in
             if img != nil { Task { await uploadAvatar() } }
         }
@@ -325,8 +328,73 @@ struct SettingsView: View {
                     }
                 }
                 .buttonStyle(.plain)
+                // 注销账号（App Store 上架要求：App 内提供账号删除入口）
+                Button { showDeleteAccount = true } label: {
+                    HStack {
+                        Text("注销账号")
+                            .font(.system(size: 13))
+                            .foregroundColor(.appDestructive)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11))
+                            .foregroundColor(.appMutedFg)
+                    }
+                }
+                .buttonStyle(.plain)
             }
         }
+    }
+
+    // MARK: 关于与协议（App Store 上架要求新增）
+    private var aboutSection: some View {
+        SectionCard {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("关于与协议")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.appForeground)
+                aboutRow("隐私政策", icon: "hand.raised", dest: AnyView(LegalView(doc: .privacy)))
+                aboutRow("用户协议与社区规范", icon: "doc.text", dest: AnyView(LegalView(doc: .terms)))
+                Button {
+                    UIPasteboard.general.string = "3495379352"
+                    ToastCenter.shared.success("QQ 号已复制")
+                } label: {
+                    HStack {
+                        Text("意见反馈（QQ 3495379352）")
+                            .font(.system(size: 13))
+                            .foregroundColor(.appForeground)
+                        Spacer()
+                        Image(systemName: "doc.on.doc")
+                            .font(.system(size: 11))
+                            .foregroundColor(.appMutedFg)
+                    }
+                }
+                .buttonStyle(.plain)
+                HStack {
+                    Text("当前版本")
+                        .font(.system(size: 13))
+                        .foregroundColor(.appForeground)
+                    Spacer()
+                    Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")
+                        .font(.system(size: 12))
+                        .foregroundColor(.appMutedFg)
+                }
+            }
+        }
+    }
+
+    private func aboutRow(_ title: String, icon: String, dest: AnyView) -> some View {
+        NavigationLink(destination: dest) {
+            HStack {
+                Text(title)
+                    .font(.system(size: 13))
+                    .foregroundColor(.appForeground)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11))
+                    .foregroundColor(.appMutedFg)
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: 退出登录

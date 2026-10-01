@@ -19,6 +19,12 @@ actor MashanglingAPI {
             await APIClient.shared.setToken(nil)
             return true
         }
+
+        /// 注销账号（App Store 上架要求；需后端提供 user.deleteAccount，参数为登录密码）
+        func deleteAccount(password: String) async throws -> Bool {
+            let r: OkResponse = try await client.post("user.deleteAccount", input: ["password": password])
+            return r.ok ?? false
+        }
     }
 
     // MARK: - 邮箱认证（emailAuth.*）

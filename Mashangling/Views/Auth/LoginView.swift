@@ -72,10 +72,22 @@ struct LoginView: View {
                     }
                     .padding(.horizontal, 4)
 
-                    Text("登录即表示同意站点的社区规范；注册后可在「设置」里换绑邮箱。")
-                        .font(.system(size: 10))
-                        .foregroundColor(.appMutedFg)
-                        .multilineTextAlignment(.center)
+                    VStack(spacing: 4) {
+                        HStack(spacing: 2) {
+                            Text("登录即表示同意")
+                            NavigationLink(destination: LegalView(doc: .terms)) {
+                                Text("《用户协议与社区规范》").foregroundColor(.appPrimary)
+                            }
+                            Text("和")
+                            NavigationLink(destination: LegalView(doc: .privacy)) {
+                                Text("《隐私政策》").foregroundColor(.appPrimary)
+                            }
+                        }
+                        Text("注册后可在「设置」里换绑邮箱。")
+                    }
+                    .font(.system(size: 10))
+                    .foregroundColor(.appMutedFg)
+                    .multilineTextAlignment(.center)
 
                     Spacer(minLength: 40)
                 }

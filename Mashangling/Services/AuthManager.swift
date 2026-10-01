@@ -48,4 +48,16 @@ class AuthManager: ObservableObject {
         currentUser = nil
         isAuthenticated = false
     }
+
+    /// 注销账号（App Store 上架要求）：成功后清空本地登录态
+    func deleteAccount(password: String) async throws {
+        let ok = try await MashanglingAPI.shared.auth.deleteAccount(password: password)
+        guard ok else {
+            throw NSError(domain: "AuthManager", code: 1,
+                          userInfo: [NSLocalizedDescriptionKey: "注销失败，请检查密码是否正确"])
+        }
+        await APIClient.shared.setToken(nil)
+        currentUser = nil
+        isAuthenticated = false
+    }
 }
