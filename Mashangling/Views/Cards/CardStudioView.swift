@@ -416,11 +416,13 @@ struct CardStudioView: View {
         .cornerRadius(4)
     }
 
-    /// 贴纸图（dataURL 直接解码）
+    /// 贴纸图（dataURL 直接解码；远程 URL 走 AppImage）
     private func stickerImageView(_ url: String) -> some View {
         Group {
             if let data = SiteConfig.dataFromDataURL(url), let ui = UIImage(data: data) {
                 Image(uiImage: ui).resizable().aspectRatio(contentMode: .fit)
+            } else if !SiteConfig.isDataURL(url), !url.isEmpty {
+                AppImage(path: url, contentMode: .fit)
             } else {
                 Image(systemName: "photo").foregroundColor(.appMutedFg)
             }

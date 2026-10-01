@@ -570,26 +570,41 @@ struct ProfileView: View {
     // MARK: 数据
     private func load() async {
         loading = true
-        if let p = try? await MashanglingAPI.shared.showcase.byUser(userId: userId) {
+        // 全部并行请求（网页也是并发的），主信息回来就先上屏
+        async let pReq = MashanglingAPI.shared.showcase.byUser(userId: userId)
+        async let cReq = MashanglingAPI.shared.card.forUser(userId: userId)
+        async let bReq = MashanglingAPI.shared.gift.publicBadges(userId: userId)
+        async let f1 = MashanglingAPI.shared.follow.followers(userId: userId)
+        async let f2 = MashanglingAPI.shared.follow.followingOf(userId: userId)
+        async let f3 = MashanglingAPI.shared.follow.friends(userId: userId)
+        async let meReq: [FollowUser]? = authManager.isAuthenticated && isMe
+            ? MashanglingAPI.shared.follow.list() : nil
+        async let soReq: [SoldoutReceivedRow]? = authManager.isAuthenticated && isMe
+            ? MashanglingAPI.shared.soldout.received() : nil
+        async let rqReq: [RequestReceivedRow]? = authManager.isAuthenticated && isMe
+            ? MashanglingAPI.shared.request.received() : nil
+        async let fsReq: FollowStatus? = authManager.isAuthenticated && !isMe
+            ? MashanglingAPI.shared.follow.status(userId: userId) : nil
+        async let muReq: MutualWithResponse? = authManager.isAuthenticated && !isMe
+            ? MashanglingAPI.shared.follow.mutualWith(userId: userId) : nil
+
+        if let p = try? await pReq {
             profile = p
             isError = false
         } else {
             isError = true
         }
-        cards = try? await MashanglingAPI.shared.card.forUser(userId: userId)
-        badges = (try? await MashanglingAPI.shared.gift.publicBadges(userId: userId)) ?? []
-        await loadFollowLists()
-        if authManager.isAuthenticated {
-            if !isMe {
-                followStatus = try? await MashanglingAPI.shared.follow.status(userId: userId)
-                mutualCount = (try? await MashanglingAPI.shared.follow.mutualWith(userId: userId))?.count ?? 0
-            } else {
-                myFollowing = (try? await MashanglingAPI.shared.follow.list()) ?? []
-                soldouts = (try? await MashanglingAPI.shared.soldout.received()) ?? []
-                requests = (try? await MashanglingAPI.shared.request.received()) ?? []
-            }
-        }
         loading = false
+        cards = try? await cReq
+        badges = (try? await bReq) ?? []
+        followerCount = (try? await f1)?.count ?? 0
+        followingCount = (try? await f2)?.count ?? 0
+        friendCount = (try? await f3)?.count ?? 0
+        myFollowing = (try? await meReq) ?? []
+        soldouts = (try? await soReq) ?? []
+        requests = (try? await rqReq) ?? []
+        followStatus = try? await fsReq
+        mutualCount = (try? await muReq)?.count ?? 0
     }
 
     private func loadFollowLists() async {

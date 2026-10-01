@@ -16,15 +16,19 @@ struct MainTabView: View {
             let bottomPad = geo.safeAreaInsets.bottom * 0.5 // 网页：paddingBottom = 安全区 * 0.5
             let barHeight = 56 + bottomPad
             ZStack(alignment: .bottom) {
-                // 内容区（延伸进底部安全区，底栏高度统一由 padding 让出）
-                Group {
-                    switch tab {
-                    case 0: HomeView()
-                    case 1: PlazaView()
-                    case 2: NavigationStack { PublishView() }
-                    case 3: MessagesView()
-                    default: NavigationStack { ProfileView(userId: authManager.currentUser?.id ?? 0) }
-                    }
+                // 内容区（五个 Tab 常驻保活，切换不重载；延伸进底部安全区，底栏高度由 padding 让出）
+                ZStack {
+                    HomeView()
+                        .opacity(tab == 0 ? 1 : 0).allowsHitTesting(tab == 0)
+                    PlazaView()
+                        .opacity(tab == 1 ? 1 : 0).allowsHitTesting(tab == 1)
+                    NavigationStack { PublishView() }
+                        .opacity(tab == 2 ? 1 : 0).allowsHitTesting(tab == 2)
+                    MessagesView()
+                        .opacity(tab == 3 ? 1 : 0).allowsHitTesting(tab == 3)
+                    NavigationStack { ProfileView(userId: authManager.currentUser?.id ?? 0) }
+                        .id(authManager.currentUser?.id ?? 0)   // 登录态就绪后重建一次
+                        .opacity(tab == 4 ? 1 : 0).allowsHitTesting(tab == 4)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding(.bottom, barHeight)

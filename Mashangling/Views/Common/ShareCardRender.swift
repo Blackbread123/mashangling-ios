@@ -167,13 +167,20 @@ struct ShareCardCanvas: View {
             }
 
             // 贴纸（最多 2 个；网页 drawImage/预览热区均以左上角为原点：left=x·W, top=y·H）
+            // dataURL 同步解码；远程 URL 走 AppImage（与网页 drawImage 支持远程图一致）
             if let stickers = theme?.stickers {
                 ZStack(alignment: .topLeading) {
                     ForEach(Array(stickers.prefix(2))) { st in
-                        if let data = SiteConfig.dataFromDataURL(st.url), let ui = UIImage(data: data) {
-                            Image(uiImage: ui)
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
+                        if SiteConfig.isDataURL(st.url) {
+                            if let data = SiteConfig.dataFromDataURL(st.url), let ui = UIImage(data: data) {
+                                Image(uiImage: ui)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(width: Self.designW * st.scale)
+                                    .offset(x: Self.designW * st.x, y: Self.designH * st.y)
+                            }
+                        } else if !st.url.isEmpty {
+                            AppImage(path: st.url, contentMode: .fit)
                                 .frame(width: Self.designW * st.scale)
                                 .offset(x: Self.designW * st.x, y: Self.designH * st.y)
                         }
