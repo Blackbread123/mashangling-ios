@@ -186,7 +186,8 @@ struct ShareCardCanvas: View {
                         }
                     }
                 }
-                .frame(width: Self.designW, height: Self.designH)
+                // 必须显式 topLeading：frame 默认 center 会把小尺寸的贴纸层整体居中，offset 随之错位到画布外
+                .frame(width: Self.designW, height: Self.designH, alignment: .topLeading)
             }
 
             // 底部品牌条

@@ -36,9 +36,8 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             COMPILER_INDEX_STORE_ENABLE=NO
 
-      - name: 运行渲染诊断测试（模拟器）
+      - name: 运行渲染回归测试（模拟器）
         id: rendertest
-        continue-on-error: true
         run: |
           xcodebuild test \
             -project Mashangling.xcodeproj \
