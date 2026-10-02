@@ -36,6 +36,33 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             COMPILER_INDEX_STORE_ENABLE=NO
 
+      - name: 运行渲染诊断测试（模拟器）
+        id: rendertest
+        continue-on-error: true
+        run: |
+          xcodebuild test \
+            -project Mashangling.xcodeproj \
+            -scheme Mashangling \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -resultBundlePath TestResults.xcresult \
+            CODE_SIGNING_ALLOWED=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO
+
+      - name: 导出渲染附件
+        if: always() && steps.rendertest.outcome != ''
+        run: |
+          mkdir -p render-attachments
+          xcrun xcresulttool export attachments --path TestResults.xcresult --output-path render-attachments/ || true
+          ls -la render-attachments/ || true
+
+      - name: 上传渲染结果
+        if: always() && steps.rendertest.outcome != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: render-attachments
+          path: render-attachments/
+          if-no-files-found: ignore
+
       - name: 上传编译日志
         if: failure()
         uses: actions/upload-artifact@v4
