@@ -10,6 +10,8 @@ struct MainTabView: View {
     @EnvironmentObject var authManager: AuthManager
     @State private var tab = 0
     @State private var showLogin = false
+    // 各 Tab 的重置序号：点 Tab 时 +1 强制回到该栏目根页面（防止头像菜单 push 的页面卡住）
+    @State private var resetIDs = [0, 0, 0, 0, 0]
 
     var body: some View {
         GeometryReader { geo in
@@ -19,15 +21,18 @@ struct MainTabView: View {
                 // 内容区（五个 Tab 常驻保活，切换不重载；延伸进底部安全区，底栏高度由 padding 让出）
                 ZStack {
                     HomeView()
+                        .id(resetIDs[0])
                         .opacity(tab == 0 ? 1 : 0).allowsHitTesting(tab == 0)
                     PlazaView()
+                        .id(resetIDs[1])
                         .opacity(tab == 1 ? 1 : 0).allowsHitTesting(tab == 1)
                     NavigationStack { PublishView() }
                         .opacity(tab == 2 ? 1 : 0).allowsHitTesting(tab == 2)
                     MessagesView()
+                        .id(resetIDs[3])
                         .opacity(tab == 3 ? 1 : 0).allowsHitTesting(tab == 3)
                     NavigationStack { ProfileView(userId: authManager.currentUser?.id ?? 0) }
-                        .id(authManager.currentUser?.id ?? 0)   // 登录态就绪后重建一次
+                        .id("\(authManager.currentUser?.id ?? 0)-\(resetIDs[4])")   // 登录态就绪/点 Tab 时重建回根页面
                         .opacity(tab == 4 ? 1 : 0).allowsHitTesting(tab == 4)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -65,9 +70,9 @@ struct MainTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: .mslSwitchTab)) { n in
             if let i = n.object as? Int { tab = i }
         }
-        // 点击推送通知 → 落到消息页
+        // 点击推送通知 → 落到消息页（回根页面，保证看到最新列表）
         .onReceive(NotificationCenter.default.publisher(for: .didReceivePush)) { _ in
-            if authManager.isAuthenticated { tab = 3 }
+            if authManager.isAuthenticated { tab = 3; resetIDs[3] += 1 }
         }
     }
 
@@ -79,6 +84,8 @@ struct MainTabView: View {
                 showLogin = true
             } else {
                 tab = index
+                // 无论何时点 Tab 都回到该栏目根页面（发布页除外，防止清空填写中的表单）
+                if index != 2 { resetIDs[index] += 1 }
             }
         } label: {
             VStack(spacing: 2) {
