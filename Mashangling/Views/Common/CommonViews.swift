@@ -295,31 +295,11 @@ struct WebHeaderModifier: ViewModifier {
     func body(content: Content) -> some View {
         ZStack(alignment: .topTrailing) {
             VStack(spacing: 0) {
-                if mobileSearch { searchBar }
-                content
-            }
-            if showAvatarMenu {
-                Color.black.opacity(0.001)
-                    .ignoresSafeArea()
-                    .onTapGesture { showAvatarMenu = false }
-                AvatarMenuPanel(close: { showAvatarMenu = false })
-                    .padding(.top, 44)
-                    .padding(.trailing, 8)
-                    .transition(.opacity.combined(with: .scale(scale: 0.95, anchor: .topTrailing)))
-                    .zIndex(1)
-            }
-        }
-        .animation(.easeOut(duration: 0.15), value: showAvatarMenu)
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationTitle("")
-        .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Text("码上领")
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundColor(.appForeground)
-            }
-            ToolbarItem(placement: .navigationBarTrailing) {
-                HStack(spacing: 6) {
+                // 自绘顶栏（与首页一致；系统 toolbar 在 iOS 26 会变玻璃胶囊且标题不显示，禁用）
+                HStack(spacing: 8) {
+                    Text("码上领")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(.appForeground)
                     Button {
                         withAnimation(.easeOut(duration: 0.15)) { mobileSearch.toggle() }
                     } label: {
@@ -330,22 +310,23 @@ struct WebHeaderModifier: ViewModifier {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    Spacer()
                     if let me = authManager.currentUser {
                         Button { showAvatarMenu.toggle() } label: {
-                            AvatarView(path: me.avatar, name: me.name ?? "U", size: 36)
-                                .overlay(alignment: .topTrailing) {
-                                    if unreadManager.totalUnread > 0 {
-                                        Text(unreadManager.totalUnread > 99 ? "99+" : "\(unreadManager.totalUnread)")
-                                            .font(.system(size: 10, weight: .bold))
-                                            .foregroundColor(.appPrimaryFg)
-                                            .padding(.horizontal, 4)
-                                            .frame(height: 16)
-                                            .background(Color.appPrimary)
-                                            .cornerRadius(8)
-                                            .overlay(Capsule().stroke(Color.appBackground, lineWidth: 2))
-                                            .offset(x: 6, y: -6)
-                                    }
+                            ZStack(alignment: .topTrailing) {
+                                AvatarView(path: me.avatar, name: me.name ?? "U", size: 36)
+                                if unreadManager.totalUnread > 0 {
+                                    Text(unreadManager.totalUnread > 99 ? "99+" : "\(unreadManager.totalUnread)")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundColor(.appPrimaryFg)
+                                        .padding(.horizontal, 4)
+                                        .frame(height: 16)
+                                        .background(Color.appPrimary)
+                                        .cornerRadius(8)
+                                        .overlay(Capsule().stroke(Color.appBackground, lineWidth: 2))
+                                        .offset(x: 6, y: -6)
                                 }
+                            }
                         }
                         .buttonStyle(.plain)
                     } else {
@@ -362,8 +343,25 @@ struct WebHeaderModifier: ViewModifier {
                         .buttonStyle(.plain)
                     }
                 }
+                .frame(height: 64)
+                .padding(.horizontal, 12)
+                .background(Color.appBackground.opacity(0.85))
+                if mobileSearch { searchBar }
+                content
+            }
+            if showAvatarMenu {
+                Color.black.opacity(0.001)
+                    .ignoresSafeArea()
+                    .onTapGesture { showAvatarMenu = false }
+                AvatarMenuPanel(close: { showAvatarMenu = false })
+                    .padding(.top, 68)
+                    .padding(.trailing, 8)
+                    .transition(.opacity.combined(with: .scale(scale: 0.95, anchor: .topTrailing)))
+                    .zIndex(1)
             }
         }
+        .animation(.easeOut(duration: 0.15), value: showAvatarMenu)
+        .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(isPresented: $pushSearch) {
             SearchView(initialQuery: searchInput)
         }

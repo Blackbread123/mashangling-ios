@@ -38,6 +38,27 @@ struct PublishView: View {
     private let tagMax = 8
 
     var body: some View {
+        Group {
+            if isEdit {
+                formContent
+                    .navigationTitle("编辑橱窗")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button("关闭") { dismiss() }
+                                .font(.system(size: 13))
+                                .foregroundColor(.appMutedFg)
+                        }
+                    }
+            } else {
+                // 主 Tab 形态：与网页一致，套用全局自绘顶栏
+                formContent
+                    .webHeader()
+            }
+        }
+    }
+
+    private var formContent: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 20) {
                 // 副标题（对应网页 h1 下的说明段）
@@ -317,17 +338,6 @@ struct PublishView: View {
                            isActive: Binding(get: { publishedId != nil }, set: { if !$0 { publishedId = nil } })) { EmptyView() }
                 .hidden()
         )
-        .navigationTitle(isEdit ? "编辑橱窗" : "发布橱窗")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            if isEdit {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("关闭") { dismiss() }
-                        .font(.system(size: 13))
-                        .foregroundColor(.appMutedFg)
-                }
-            }
-        }
         .sheet(isPresented: $showPicker) { ImagePicker(image: $cover) }
         .onAppear { prefill() }
     }

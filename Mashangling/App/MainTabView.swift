@@ -13,7 +13,7 @@ struct MainTabView: View {
 
     var body: some View {
         GeometryReader { geo in
-            let bottomPad = geo.safeAreaInsets.bottom * 0.5 // 网页：paddingBottom = 安全区 * 0.5
+            let bottomPad = geo.safeAreaInsets.bottom * 0.25 // 贴近 Home 指示条（用户实测截图比例）
             let barHeight = 56 + bottomPad
             ZStack(alignment: .bottom) {
                 // 内容区（五个 Tab 常驻保活，切换不重载；延伸进底部安全区，底栏高度由 padding 让出）
