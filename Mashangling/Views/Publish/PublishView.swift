@@ -593,6 +593,31 @@ struct PublishView: View {
         pinned = d.pinned ?? false
     }
 
+    /// 发布成功后清空表单（对齐网页：离开发布页后再次进入是全新空白表单）
+    private func resetForm() {
+        title = ""
+        platform = "rouzao"
+        rouzaoCode = ""
+        codeVisibility = "open"
+        descriptionText = ""
+        cover = nil
+        existingCover = nil
+        selectedTags = []
+        tagQuery = ""
+        tagResults = []
+        newTagCategory = "work"
+        stockStatus = "none"
+        claimMode = "request"
+        quantityText = ""
+        pointCostText = ""
+        hasAddrDeadline = false
+        addrDeadlineDate = Date().addingTimeInterval(86400)
+        hasExpires = false
+        expiresDate = Date().addingTimeInterval(7 * 86400)
+        shippingFree = false
+        pinned = false
+    }
+
     private func searchTags() async {
         let q = tagQuery.trimmingCharacters(in: .whitespaces)
         tagResults = (try? await MashanglingAPI.shared.tag.search(q: q, limit: 12)) ?? []
@@ -682,6 +707,9 @@ struct PublishView: View {
                     addressDeadline: dl, expiresAt: exp,
                     shippingFree: ship)
                 ToastCenter.shared.success("发布成功！")
+                // 网页行为：发布成功即离开本页，下次进入是全新空白表单；
+                // App 发布 Tab 常驻，必须显式清空，否则旧内容残留像「在编辑原橱窗」
+                resetForm()
                 publishedId = newId
             }
         } catch {
