@@ -48,6 +48,10 @@
         <string>fetch</string>
         <string>remote-notification</string>
     </array>
+    <key>BGTaskSchedulerPermittedIdentifiers</key>
+    <array>
+        <string>com.mashangling.app.unreadRefresh</string>
+    </array>
     <key>ITSAppUsesNonExemptEncryption</key>
     <false/>
 </dict>
