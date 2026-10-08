@@ -25,6 +25,11 @@ actor MashanglingAPI {
             let r: OkResponse = try await client.post("user.deleteAccount", input: ["password": password])
             return r.ok ?? false
         }
+
+        /// 封禁状态（2026-10-08）：封禁中返回 BanInfo，正常返回 nil
+        func banInfo() async throws -> BanInfo? {
+            try await client.getOptional("auth.banInfo")
+        }
     }
 
     // MARK: - 邮箱认证（emailAuth.*）
@@ -203,6 +208,14 @@ actor MashanglingAPI {
         func decide(id: Int, action: String) async throws -> DecideResult {
             try await client.post("report.decide", input: [
                 "id": id, "action": action,
+            ])
+        }
+
+        /// BAN 类举报终审：删除内容并封禁作者；banDays=nil 表示永久封禁（显式传 null）
+        func decideWithBan(id: Int, banDays: Int?) async throws -> DecideResult {
+            try await client.post("report.decide", input: [
+                "id": id, "action": "removeTarget",
+                "banDays": banDays.map { $0 as Any } ?? NSNull(),
             ])
         }
     }
@@ -1238,6 +1251,70 @@ actor MashanglingAPI {
         }
     }
 
+    // MARK: - 动态（post.*，2026-10-08 网页版新功能）
+    struct PostService {
+        let client: APIClient
+
+        /// 动态流：自己 + 关注的人，按时间倒序
+        func feed(cursor: Int = 0, limit: Int = 10) async throws -> PostFeedResponse {
+            var input: [String: Any] = ["limit": limit]
+            if cursor > 0 { input["cursor"] = cursor }
+            return try await client.get("post.feed", input: input, cacheable: false)
+        }
+
+        /// 某人的动态（个人主页）：未关注返回 restricted
+        func byUser(userId: Int, cursor: Int = 0, limit: Int = 10) async throws -> PostFeedResponse {
+            var input: [String: Any] = ["userId": userId, "limit": limit]
+            if cursor > 0 { input["cursor"] = cursor }
+            return try await client.get("post.byUser", input: input, cacheable: false)
+        }
+
+        /// 动态数量（个人主页入口卡）
+        func countByUser(userId: Int) async throws -> PostCountResponse {
+            try await client.get("post.countByUser", input: ["userId": userId])
+        }
+
+        /// 发动态：文字 + 最多 9 张配图（dataURL）
+        func create(content: String, images: [String]) async throws -> Int {
+            let r: PostCreateResult = try await client.post("post.create", input: [
+                "content": content, "images": images,
+            ])
+            return r.id ?? 0
+        }
+
+        func delete(id: Int) async throws -> Bool {
+            let r: OkResponse = try await client.post("post.delete", input: ["id": id])
+            return r.ok ?? false
+        }
+
+        /// 置顶/取消置顶（每人至多一条）
+        func togglePin(id: Int) async throws -> Bool {
+            let r: PostPinResult = try await client.post("post.togglePin", input: ["id": id])
+            return r.pinned ?? false
+        }
+
+        func toggleLike(postId: Int) async throws -> Bool {
+            let r: PostLikeResult = try await client.post("post.toggleLike", input: ["postId": postId])
+            return r.liked ?? false
+        }
+
+        func comments(postId: Int, limit: Int = 50) async throws -> [PostComment] {
+            try await client.get("post.comments", input: ["postId": postId, "limit": limit], cacheable: false)
+        }
+
+        func addComment(postId: Int, content: String, replyToCommentId: Int? = nil) async throws -> Bool {
+            var input: [String: Any] = ["postId": postId, "content": content]
+            if let rid = replyToCommentId { input["replyToCommentId"] = rid }
+            let r: PostCreateResult = try await client.post("post.addComment", input: input)
+            return (r.id ?? 0) > 0
+        }
+
+        func deleteComment(id: Int) async throws -> Bool {
+            let r: OkResponse = try await client.post("post.deleteComment", input: ["id": id])
+            return r.ok ?? false
+        }
+    }
+
     // MARK: - 管理后台（admin.*）
     struct AdminService {
         let client: APIClient
@@ -1275,6 +1352,16 @@ actor MashanglingAPI {
             ])
             return r.ok ?? false
         }
+
+        /// 数据库备份列表（2026-10-08，仅主管理员）
+        func backupList() async throws -> BackupListResponse {
+            try await client.get("admin.backupList")
+        }
+
+        /// 立即手动备份（仅主管理员）
+        func backupNow() async throws -> BackupNowResult {
+            try await client.post("admin.backupNow")
+        }
     }
 
     // MARK: - 服务实例
@@ -1303,6 +1390,7 @@ actor MashanglingAPI {
     var farm:        FarmService        { FarmService(client: client) }
     var gift:        GiftService        { GiftService(client: client) }
     var stats:       StatsService       { StatsService(client: client) }
+    var post:        PostService        { PostService(client: client) }
     var card:        CardService        { CardService(client: client) }
     var cardPlaza:   CardPlazaService   { CardPlazaService(client: client) }
     var address:     AddressService     { AddressService(client: client) }

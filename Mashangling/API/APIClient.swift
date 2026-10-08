@@ -42,6 +42,20 @@ struct TRPCErrorDetail: Decodable {
     let code: Int?
 }
 
+// MARK: - 超时包装（把「永不返回」的请求在 N 秒后变成可读错误，避免界面永远空白）
+func withTimeout<T>(_ seconds: Double, _ op: @escaping () async throws -> T) async throws -> T {
+    try await withThrowingTaskGroup(of: T.self) { group in
+        group.addTask { try await op() }
+        group.addTask {
+            try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            throw APIError.server("加载超时，请检查网络后点按重试")
+        }
+        let result = try await group.next()!
+        group.cancelAll()
+        return result
+    }
+}
+
 // MARK: - 分页参数
 struct PageInput {
     var cursor: Int? = nil
@@ -125,6 +139,35 @@ actor APIClient {
             throw APIError.server("响应数据为空")
         }
         return result
+    }
+
+    // MARK: - 可空 GET（服务端 json 为 null 时返回 nil 而不是报错，如 auth.banInfo）
+    func getOptional<T: Decodable>(
+        _ procedure: String,
+        input: [String: Any]? = nil
+    ) async throws -> T? {
+        var urlStr = "\(baseURL)/api/trpc/\(procedure)"
+        let wrapped: [String: Any] = ["json": input ?? [:]]
+        let jsonData = try JSONSerialization.data(withJSONObject: wrapped)
+        let jsonStr = String(data: jsonData, encoding: .utf8) ?? "{}"
+        let encoded = jsonStr.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        urlStr += "?input=\(encoded)"
+        guard let url = URL(string: urlStr) else { throw APIError.server("无效 URL") }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "GET"
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        req.httpShouldHandleCookies = true
+
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse else { throw APIError.server("无效响应") }
+        if http.statusCode == 401 { throw APIError.unauthorized }
+
+        let decoded = try JSONDecoder().decode(TRPCResponse<T>.self, from: data)
+        if let err = decoded.error?.json {
+            throw APIError.server(err.message ?? "未知错误")
+        }
+        return decoded.result?.data?.json ?? nil
     }
 
     // MARK: - 通用 POST（对应 tRPC mutation）

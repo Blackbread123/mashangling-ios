@@ -190,6 +190,8 @@ struct ReportSheet: View {
         case "repost": return "返图"
         case "cardComment": return "评论"
         case "dm": return "私信"
+        case "post": return "动态"
+        case "postComment": return "评论"
         default: return "内容"
         }
     }
@@ -204,7 +206,7 @@ struct ReportSheet: View {
                     .background(Color.appInput)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                     .onChange(of: reason) { v in if v.count > 500 { reason = String(v.prefix(500)) } }
-                if targetType == "repost" || targetType == "cardComment" || targetType == "dm" {
+                if targetType == "repost" || targetType == "cardComment" || targetType == "dm" || targetType == "post" || targetType == "postComment" {
                     Text("举报成立后管理员会删除该内容并封禁发布者账号。")
                         .font(.system(size: 11))
                         .lineSpacing(5)

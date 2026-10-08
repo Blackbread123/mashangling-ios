@@ -27,6 +27,12 @@ struct AdminView: View {
     @State private var opinion = ""
     @State private var busy = false
     @State private var roleConfirm: AdminUser?
+    // 封号时长选择面板（2026-10-08 网页新功能）
+    @State private var banMenuFor: Int? = nil
+    @State private var banCustom = ""
+    // 数据库备份（仅主管理员）
+    @State private var backups: BackupListResponse? = nil
+    @State private var backupBusy = false
 
     private var isAdmin: Bool { authManager.currentUser?.role == "admin" }
     private var isSuper: Bool { authManager.currentUser?.superAdmin == true }
@@ -42,7 +48,7 @@ struct AdminView: View {
         "showcase": "橱窗", "cardPost": "卡片", "repost": "返图",
         "cardComment": "卡片评论", "dm": "私信", "tag": "标签",
     ]
-    private static let banTypes: Set<String> = ["repost", "cardComment", "dm"]
+    private static let banTypes: Set<String> = ["repost", "cardComment", "dm", "post", "postComment"]
 
     var body: some View {
         Group {
@@ -118,9 +124,85 @@ struct AdminView: View {
                         .padding(.top, 24)
                     }
                 }
+
+                // 数据库备份（仅主管理员可见，逐行复刻网页 Admin.tsx 2026-10-08）
+                if isSuper {
+                    backupCard.padding(.top, 40)
+                }
             }
             .padding(16)
         }
+    }
+
+    // MARK: 数据库备份卡（网页：rounded-xl border bg-card p-4）
+    private var backupCard: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("数据库备份")
+                        .font(.system(size: 14, weight: .bold)).foregroundStyle(Color.appForeground)
+                    Text("每天凌晨 3 点自动备份到 OSS，保留 30 天")
+                        .font(.system(size: 12)).foregroundStyle(Color.appMutedFg)
+                }
+                Spacer()
+                if todayBackedUp {
+                    HStack(spacing: 6) {
+                        Image(systemName: "cylinder").font(.system(size: 10))
+                        Text("已备份").font(.system(size: 12, weight: .medium))
+                    }
+                    .foregroundStyle(Color.twEmerald600)
+                    .padding(.horizontal, 12).padding(.vertical, 6)
+                    .background(Color.twEmerald500.opacity(0.1)).clipShape(Capsule())
+                } else {
+                    Button(backupBusy ? "备份中…" : "手动备份") { Task { await backupNow() } }
+                        .font(.system(size: 12)).foregroundStyle(Color.appPrimaryFg)
+                        .padding(.horizontal, 14).padding(.vertical, 8)
+                        .background(Color.appPrimary).clipShape(Capsule())
+                        .disabled(backupBusy || backups?.configured != true)
+                }
+            }
+            if backups == nil {
+                RoundedRectangle(cornerRadius: 8).fill(Color.appSecondary)
+                    .frame(height: 40).padding(.top, 12)
+            } else if backups?.configured != true {
+                Text("未配置 OSS 凭证，自动备份与手动备份均不可用")
+                    .font(.system(size: 12)).foregroundStyle(Color.twAmber600)
+                    .padding(.top, 12)
+            } else if !(backups?.items ?? []).isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(backups?.items ?? []) { b in
+                        HStack(spacing: 12) {
+                            Image(systemName: "cylinder")
+                                .font(.system(size: 11)).foregroundStyle(Color.appMutedFg)
+                            Text(b.key.replacingOccurrences(of: "backups/", with: ""))
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundStyle(Color.appForeground.opacity(0.8))
+                                .lineLimit(1)
+                            Spacer(minLength: 0)
+                            Text("\(b.sizeMB.map { String(format: "%.1f", $0) } ?? "?") MB")
+                                .font(.system(size: 12)).foregroundStyle(Color.appMutedFg)
+                            Text(backupDateText(b.lastModified))
+                                .font(.system(size: 12)).foregroundStyle(Color.appMutedFg)
+                        }
+                        .padding(.vertical, 8)
+                        .overlay(alignment: .top) {
+                            Rectangle().fill(Color.appBorder.opacity(0.6)).frame(height: 0.5)
+                        }
+                    }
+                }
+                .padding(.top, 12)
+            }
+        }
+        .padding(16).background(Color.appCard)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.appBorder, lineWidth: 0.5))
+    }
+
+    private func backupDateText(_ iso: String?) -> String {
+        guard let iso, let d = DateFmt.parse(iso) else { return "" }
+        let f = DateFormatter(); f.locale = Locale(identifier: "zh_CN")
+        f.dateFormat = "M月d日 HH:mm"
+        return f.string(from: d)
     }
 
     // MARK: 统计卡片
@@ -443,21 +525,72 @@ struct AdminView: View {
                 }
             }
 
-            // 主管理员：直接决定
+            // 主管理员：直接决定（BAN 类可选封禁时长，逐行复刻网页 Admin.tsx 2026-10-08）
             if isSuper && (r.status == "pending" || r.status == "escalated") {
-                HStack(spacing: 8) {
-                    Button(AdminView.banTypes.contains(r.targetType) ? "成立：删除并封号" : "成立：下架处理") {
-                        Task { await decide(r, action: "removeTarget") }
+                if AdminView.banTypes.contains(r.targetType) && banMenuFor == r.id {
+                    // 封禁时长面板（网页：rounded-xl border-red-200 bg-red-50/60 p-3）
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("内容删除后，封禁作者：")
+                            .font(.system(size: 12, weight: .medium)).foregroundStyle(Color(h: 0, s: 74, l: 42))
+                        FlowLayout(spacing: 6) {
+                            ForEach([7, 30, 60], id: \.self) { d in
+                                Button("\(d) 天") { Task { await decideWithBan(r, days: d) } }
+                                    .font(.system(size: 12)).foregroundStyle(Color.appDestructiveFg)
+                                    .padding(.horizontal, 14).padding(.vertical, 8)
+                                    .background(Color.appDestructive).clipShape(Capsule())
+                                    .disabled(busy)
+                            }
+                            HStack(spacing: 4) {
+                                TextField("天数", text: $banCustom)
+                                    .font(.system(size: 12))
+                                    .multilineTextAlignment(.center)
+                                    .keyboardType(.numberPad)
+                                    .frame(width: 64, height: 32)
+                                    .overlay(Capsule().stroke(Color.appBorder, lineWidth: 0.5))
+                                    .onChange(of: banCustom) { v in
+                                        banCustom = String(v.filter { $0.isNumber }.prefix(4))
+                                    }
+                                Button("自定义") {
+                                    if let d = Int(banCustom), d >= 1 { Task { await decideWithBan(r, days: d) } }
+                                }
+                                .font(.system(size: 12)).foregroundStyle(Color.appDestructiveFg)
+                                .padding(.horizontal, 14).padding(.vertical, 8)
+                                .background(Color.appDestructive).clipShape(Capsule())
+                                .disabled(busy || (Int(banCustom) ?? 0) < 1)
+                            }
+                            Button("永久") { Task { await decideWithBan(r, days: nil) } }
+                                .font(.system(size: 12)).foregroundStyle(Color.appDestructiveFg)
+                                .padding(.horizontal, 14).padding(.vertical, 8)
+                                .background(Color.appDestructive).clipShape(Capsule())
+                                .disabled(busy)
+                            Button("取消") { banMenuFor = nil; banCustom = "" }
+                                .font(.system(size: 12)).foregroundStyle(Color.appMutedFg)
+                                .padding(.horizontal, 14).padding(.vertical, 8)
+                        }
                     }
-                    .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.appDestructiveFg)
-                    .padding(.horizontal, 14).padding(.vertical, 8)
-                    .background(Color.appDestructive).clipShape(Capsule())
-                    .disabled(busy)
-                    Button("不成立：驳回") { Task { await decide(r, action: "dismiss") } }
-                        .font(.system(size: 12)).foregroundStyle(Color.appForeground)
+                    .padding(12)
+                    .background(Color(hex: "#fef2f2").opacity(0.6))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(hex: "#fecaca"), lineWidth: 0.5))
+                } else {
+                    HStack(spacing: 8) {
+                        Button(AdminView.banTypes.contains(r.targetType) ? "成立：删除并封号" : "成立：下架处理") {
+                            if AdminView.banTypes.contains(r.targetType) {
+                                banMenuFor = r.id; banCustom = ""
+                            } else {
+                                Task { await decide(r, action: "removeTarget") }
+                            }
+                        }
+                        .font(.system(size: 12, weight: .medium)).foregroundStyle(Color.appDestructiveFg)
                         .padding(.horizontal, 14).padding(.vertical, 8)
-                        .overlay(Capsule().stroke(Color.appBorder, lineWidth: 0.5))
+                        .background(Color.appDestructive).clipShape(Capsule())
                         .disabled(busy)
+                        Button("不成立：驳回") { Task { await decide(r, action: "dismiss") } }
+                            .font(.system(size: 12)).foregroundStyle(Color.appForeground)
+                            .padding(.horizontal, 14).padding(.vertical, 8)
+                            .overlay(Capsule().stroke(Color.appBorder, lineWidth: 0.5))
+                            .disabled(busy)
+                    }
                 }
             }
         }
@@ -490,6 +623,7 @@ struct AdminView: View {
         await loadGrowth()
         if isSuper {
             recentUsers = (try? await MashanglingAPI.shared.admin.recentUsers()) ?? []
+            backups = try? await MashanglingAPI.shared.admin.backupList()
         }
     }
 
@@ -548,6 +682,40 @@ struct AdminView: View {
             ToastCenter.shared.success(res.banned == true ? "已处理：内容删除并封号" : "已处理")
             reports = try? await MashanglingAPI.shared.report.list()
         } catch { ToastCenter.shared.error(error.localizedDescription) }
+    }
+
+    /// BAN 类举报终审：删除内容并封禁作者（days=nil 永久，逐行复刻网页 decide banDays）
+    private func decideWithBan(_ r: ReportRow, days: Int?) async {
+        busy = true; defer { busy = false }
+        do {
+            let res = try await MashanglingAPI.shared.report.decideWithBan(id: r.id, banDays: days)
+            if res.banned == true {
+                ToastCenter.shared.success(days == nil ? "已处理：内容删除并永久封号" : "已处理：内容删除并封禁 \(days!) 天")
+            } else {
+                ToastCenter.shared.success("已处理")
+            }
+            banMenuFor = nil; banCustom = ""
+            reports = try? await MashanglingAPI.shared.report.list()
+        } catch { ToastCenter.shared.error(error.localizedDescription) }
+    }
+
+    // MARK: 数据库备份（仅主管理员，逐行复刻网页 Admin.tsx 2026-10-08）
+
+    /// 今天（北京时间）是否已有自动备份：按文件名 mashangling-backup-yyyyMMdd 匹配
+    private var todayBackedUp: Bool {
+        let items = backups?.items ?? []
+        let f = DateFormatter(); f.dateFormat = "yyyyMMdd"; f.timeZone = TimeZone(secondsFromGMT: 8 * 3600)
+        let key = "mashangling-backup-\(f.string(from: Date()))"
+        return items.contains { $0.key.contains(key) }
+    }
+
+    private func backupNow() async {
+        backupBusy = true; defer { backupBusy = false }
+        do {
+            let r = try await MashanglingAPI.shared.admin.backupNow()
+            ToastCenter.shared.success("备份完成：\(r.key ?? "")（\(r.sizeMB.map { String(format: "%.1f", $0) } ?? "?") MB）")
+            backups = try? await MashanglingAPI.shared.admin.backupList()
+        } catch { ToastCenter.shared.error("备份失败：\(error.localizedDescription)") }
     }
 }
 

@@ -6,11 +6,12 @@ struct MessagesView: View {
     @EnvironmentObject var authManager: AuthManager
 
     private enum TabKey: String, CaseIterable {
-        case all, like, want, repost, soldout, claim, address, gift, dm
+        case all, like, postComment, want, repost, soldout, claim, address, gift, dm
         var label: String {
             switch self {
             case .all: return "全部"
             case .like: return "点赞"
+            case .postComment: return "动态评论"
             case .want: return "想要/领到"
             case .repost: return "返图"
             case .soldout: return "补货"
@@ -22,10 +23,16 @@ struct MessagesView: View {
         }
     }
 
+    /// 网页 2026-10-08：消息页顶部「消息 / 动态」分段
+    private enum ViewKey: String {
+        case messages, posts
+        var label: String { self == .messages ? "消息" : "动态" }
+    }
+
     /// 网页 TYPE_ICON → SF Symbols
     private func typeIcon(_ t: String) -> String {
         switch t {
-        case "like": return "heart"
+        case "like", "postLike": return "heart"
         case "want", "restock": return "hand.raised"
         case "claimed", "claim_received", "claim_approved", "claim_rejected": return "checkmark.seal"
         case "repost": return "camera"
@@ -34,6 +41,7 @@ struct MessagesView: View {
         case "follow": return "star"
         case "address": return "mappin"
         case "gift": return "gift"
+        case "postComment": return "message"
         default: return "tray"
         }
     }
@@ -62,7 +70,9 @@ struct MessagesView: View {
         }
     }
 
+    @State private var view: ViewKey = .messages
     @State private var tab: TabKey = .all
+    @State private var postsFeedKey = 0   // 发布动态后重建信息流刷新
     @State private var giftViewReceived = true   // 网页默认 received
     @State private var kw = ""
     @State private var messages: [MessageRow] = []
@@ -86,10 +96,23 @@ struct MessagesView: View {
                 } else {
                     ScrollView(showsIndicators: false) {
                         VStack(alignment: .leading, spacing: 0) {
-                            titleRow
-                            searchBar.padding(.top, 12)
-                            tabRow.padding(.top, 16)
-                            content.padding(.top, 16)
+                            topRow
+                            if view == .posts {
+                                // 网页：mt-4 space-y-3（PostComposer + PostsFeed）
+                                VStack(spacing: 12) {
+                                    PostComposerView(
+                                        onPublished: { postsFeedKey += 1 },
+                                        needLogin: {}
+                                    )
+                                    PostsFeedView(mode: "feed")
+                                        .id(postsFeedKey)
+                                }
+                                .padding(.top, 16)
+                            } else {
+                                searchBar.padding(.top, 12)
+                                tabRow.padding(.top, 16)
+                                content.padding(.top, 16)
+                            }
                             FooterView().padding(.top, 16)
                         }
                         .padding(.horizontal, 16)
@@ -102,6 +125,10 @@ struct MessagesView: View {
             .background(Color.appBackground)
             .webHeader()
             .task { await loadMessages() }
+            // 悬浮提示卡「去看看」→ 切到「动态」分段
+            .onReceive(NotificationCenter.default.publisher(for: .mslShowPosts)) { _ in
+                view = .posts
+            }
             .onChange(of: tab) { newTab in
                 if newTab == .dm, !dmLoaded { Task { await loadConversations() } }
                 if newTab == .gift, gifts == nil { Task { await loadGifts() } }
@@ -137,14 +164,30 @@ struct MessagesView: View {
         }
     }
 
-    // MARK: 标题 + 一键已读（网页：text-2xl font-bold + 胶囊按钮）
-    private var titleRow: some View {
+    // MARK: 顶部分段「消息 / 动态」+ 一键已读（网页 2026-10-08：rounded-full border bg-secondary/60 p-1）
+    private var topRow: some View {
         HStack {
-            Text("消息")
-                .font(.system(size: 24, weight: .bold))
-                .foregroundColor(.appForeground)
+            HStack(spacing: 0) {
+                ForEach([ViewKey.messages, ViewKey.posts], id: \.self) { v in
+                    Button { view = v } label: {
+                        Text(v.label)
+                            .font(.system(size: 14, weight: view == v ? .medium : .regular))
+                            .foregroundColor(view == v ? Color.appPrimaryFg : Color.appMutedFg)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 6)
+                            .background(view == v ? Color.appPrimary : Color.clear)
+                            .clipShape(Capsule())
+                            .shadow(color: view == v ? Color.black.opacity(0.06) : .clear, radius: 2, y: 1)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(4)
+            .background(Color.appSecondary.opacity(0.6))
+            .overlay(Capsule().stroke(Color.appBorder, lineWidth: 0.5))
+            .clipShape(Capsule())
             Spacer()
-            if tab != .dm {
+            if view == .messages && tab != .dm {
                 Button { Task { await markAll() } } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "checkmark")
@@ -216,11 +259,13 @@ struct MessagesView: View {
         }
     }
 
-    // MARK: 过滤逻辑（与网页一致）
+    // MARK: 过滤逻辑（与网页一致：点赞 = like + postLike；动态评论 = postComment）
     private var items: [MessageRow] {
         messages.filter { m in
             switch tab {
             case .all: return true
+            case .like: return m.type == "like" || m.type == "postLike"
+            case .postComment: return m.type == "postComment"
             case .claim: return Self.claimTypes.contains(m.type)
             case .want: return Self.wantTypes.contains(m.type)
             case .dm: return m.type == "dm"
@@ -509,6 +554,11 @@ struct MessagesView: View {
     private func open(_ m: MessageRow) {
         if !m.read { Task { await markRead(m.id) } }
         if let link = m.link, !link.isEmpty {
+            // 动态点赞/评论通知 → 切到「动态」分段（网页：/messages?tab=posts）
+            if link.contains("tab=posts") {
+                view = .posts
+                return
+            }
             if link.contains("/my-shipments") {
                 route = .myShipments
             } else if link.contains("/shipping/approval/"), let aid = Self.idFromPath(link, prefix: "/shipping/approval/") {

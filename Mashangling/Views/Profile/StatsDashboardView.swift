@@ -6,7 +6,8 @@ struct StatsDashboardView: View {
     @State private var trend: StatsTrend? = nil
     @State private var period = "week"          // week / month / year
     @State private var hidden: Set<String> = []
-    @State private var loadFailed = false
+    @State private var loadFailed: String? = nil   // 非空 = 失败原因（直接展示）
+    @State private var loading = true
 
     private let periods: [(key: String, label: String)] = [
         ("week", "本周"), ("month", "本月"), ("year", "今年"),
@@ -45,16 +46,30 @@ struct StatsDashboardView: View {
                 .background(Color.appCard)
                 .cornerRadius(5)
                 .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.appBorder, lineWidth: 0.5))
-            } else if loadFailed {
-                // 加载失败不再静默消失，给重试入口
+            } else if loading {
+                // 加载中：骨架卡（网页 Skeleton），不再空白
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("数据看板加载中…")
+                        .font(.system(size: 13))
+                        .foregroundColor(.appMutedFg)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+                .background(Color.appCard)
+                .cornerRadius(5)
+                .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.appBorder, lineWidth: 0.5))
+            } else if let reason = loadFailed {
+                // 加载失败：展示真实原因 + 重试入口
                 Button { Task { await loadAll() } } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "chart.bar.fill")
                             .font(.system(size: 15))
                             .foregroundColor(.appPrimary)
-                        Text("数据看板加载失败，点按重试")
+                        Text("数据看板加载失败：\(reason)")
                             .font(.system(size: 13))
                             .foregroundColor(.appMutedFg)
+                            .lineLimit(2)
                         Spacer()
                         Image(systemName: "arrow.clockwise")
                             .font(.system(size: 12))
@@ -268,14 +283,26 @@ struct StatsDashboardView: View {
     }
 
     private func loadAll() async {
-        loadFailed = false
+        loading = true
+        loadFailed = nil
         do {
-            stats = try await MashanglingAPI.shared.stats.dashboard()
+            // 15 秒超时兜底：任何「永不返回」都会变成可见错误而不是永远空白
+            stats = try await withTimeout(15) {
+                try await MashanglingAPI.shared.stats.dashboard()
+            }
+            loading = false
         } catch {
-            // 首次失败立刻重试一次（冷启动 cookie/网络抖动）
-            stats = try? await MashanglingAPI.shared.stats.dashboard()
-            loadFailed = stats == nil
-            print("[StatsDashboard] dashboard 加载失败: \(error)")
+            // 立刻重试一次（冷启动 cookie/网络抖动）
+            if let retry = try? await withTimeout(15, {
+                try await MashanglingAPI.shared.stats.dashboard()
+            }) {
+                stats = retry
+                loading = false
+            } else {
+                loading = false
+                loadFailed = error.localizedDescription
+                print("[StatsDashboard] dashboard 加载失败: \(error)")
+            }
         }
         await loadTrend()
     }
@@ -506,7 +533,9 @@ struct CardStatsPanelView: View {
     }
 
     private func loadAll() async {
-        stats = try? await MashanglingAPI.shared.stats.dashboard()
+        stats = try? await withTimeout(15) {
+            try await MashanglingAPI.shared.stats.dashboard()
+        }
         await loadTrend()
     }
 

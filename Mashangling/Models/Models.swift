@@ -428,6 +428,7 @@ struct HeartPoolAdmin: Codable {
 struct DecideResult: Codable {
     let ok: Bool?
     let banned: Bool?
+    let banDays: Int?      // 2026-10-08：BAN 类举报终审封禁天数（null=永久）
 }
 
 struct HeartWeeklyTopUser: Codable, Identifiable {
@@ -1712,4 +1713,90 @@ struct CardCodeMatch: Codable {
     let config: CardConfig?
     let ownerName: String?
     let ownerId: Int
+}
+
+
+// MARK: - 动态（post.*，2026-10-08 网页版新功能，逐字段对应 api/post-router.ts）
+
+struct PostAuthor: Codable {
+    let id: Int
+    let name: String?
+    let avatar: String?
+    let equippedTitle: String?
+    let level: Int?
+}
+
+struct Post: Codable, Identifiable {
+    let id: Int
+    let content: String
+    let images: [String]?       // 服务端装配为 /api/postimg/:postId/:idx 列表
+    let createdAt: String
+    let author: PostAuthor?
+    let likeCount: Int?
+    let commentCount: Int?
+    let likedByMe: Bool?
+    let mine: Bool?
+    let pinned: Bool?
+}
+
+struct PostFeedResponse: Codable {
+    let items: [Post]?
+    let nextCursor: Int?
+    let restricted: Bool?       // 仅 byUser 返回
+}
+
+struct PostCountResponse: Codable {
+    let count: Int?
+    let restricted: Bool?
+}
+
+struct PostComment: Codable, Identifiable {
+    let id: Int
+    let content: String
+    let createdAt: String
+    let author: PostCommentAuthor?
+    let mine: Bool?
+    let canDelete: Bool?
+    let replyTo: PostCommentReplyTo?
+
+    struct PostCommentAuthor: Codable {
+        let id: Int
+        let name: String?
+    }
+
+    struct PostCommentReplyTo: Codable {
+        let commentId: Int?
+        let userId: Int?
+        let name: String?
+    }
+}
+
+struct PostCreateResult: Codable { let id: Int? }
+struct PostLikeResult: Codable { let liked: Bool? }
+struct PostPinResult: Codable { let pinned: Bool? }
+
+// MARK: - 封禁状态（auth.banInfo，2026-10-08）
+struct BanInfo: Codable {
+    let banned: Bool?
+    let permanent: Bool?
+    let daysLeft: Int?
+    let until: String?
+}
+
+// MARK: - 数据库备份（admin.backupList / backupNow，2026-10-08，仅主管理员）
+struct BackupListResponse: Codable {
+    let configured: Bool?
+    let items: [BackupItem]?
+
+    struct BackupItem: Codable, Identifiable {
+        var id: String { key }
+        let key: String
+        let sizeMB: Double?
+        let lastModified: String?
+    }
+}
+
+struct BackupNowResult: Codable {
+    let key: String?
+    let sizeMB: Double?
 }

@@ -25,6 +25,7 @@ struct ProfileView: View {
     @State private var bioOpen = false
     @State private var shareOpen = false
     @State private var showcaseRoute: Int? = nil
+    @State private var postCount: PostCountResponse? = nil   // 动态入口卡（2026-10-08 网页新功能）
 
     private var isMe: Bool { authManager.currentUser?.id == userId }
 
@@ -41,6 +42,9 @@ struct ProfileView: View {
                         .padding(.vertical, 80)
                 } else if let p = profile, let a = p.author {
                     profileCard(a, p)
+
+                    // 动态入口卡（网页 2026-10-08：emerald 渐变，ID 卡之后、数据看板之前）
+                    postsEntryCard(a).padding(.top, 16)
 
                     // 数据看板（仅本人可见）
                     if isMe {
@@ -305,6 +309,49 @@ struct ProfileView: View {
             }
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: 动态入口卡（逐行复刻网页 Profile.tsx 2026-10-08：emerald 渐变 + Sparkles + ChevronRight）
+    private func postsEntryCard(_ a: ProfileData.ProfileAuthor) -> some View {
+        NavigationLink(destination: UserPostsView(userId: a.id, name: a.name ?? "TA")) {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.twEmerald500.opacity(0.1))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 20))
+                        .foregroundColor(.twEmerald600)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("动态")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.appForeground)
+                    Text(postsEntrySubtitle)
+                        .font(.system(size: 12))
+                        .foregroundColor(.appMutedFg)
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14))
+                    .foregroundColor(.appMutedFg)
+            }
+            .padding(16)
+            .background(
+                LinearGradient(colors: [Color.twEmerald500.opacity(0.08), Color.clear],
+                               startPoint: .leading, endPoint: .trailing)
+            )
+            .cornerRadius(16)
+            .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.appBorder, lineWidth: 0.5))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var postsEntrySubtitle: String {
+        guard let pc = postCount, pc.restricted != true else { return "关注后可见" }
+        let c = pc.count ?? 0
+        return c > 0 ? "共 \(c) 条动态，点进去看看" : "还没有动态"
     }
 
     // MARK: 醒目入口（网页：卡片广场 + 个性化分享卡片 渐变卡）
@@ -587,6 +634,7 @@ struct ProfileView: View {
             ? MashanglingAPI.shared.follow.status(userId: userId) : nil
         async let muReq: MutualWithResponse? = authManager.isAuthenticated && !isMe
             ? MashanglingAPI.shared.follow.mutualWith(userId: userId) : nil
+        async let pcReq = MashanglingAPI.shared.post.countByUser(userId: userId)
 
         if let p = try? await pReq {
             profile = p
@@ -605,6 +653,7 @@ struct ProfileView: View {
         requests = (try? await rqReq) ?? []
         followStatus = try? await fsReq
         mutualCount = (try? await muReq)?.count ?? 0
+        postCount = try? await pcReq
     }
 
     private func loadFollowLists() async {

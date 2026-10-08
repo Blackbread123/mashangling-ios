@@ -15,7 +15,7 @@ struct MainTabView: View {
 
     var body: some View {
         GeometryReader { geo in
-            let bottomPad = geo.safeAreaInsets.bottom * 0.25 // 贴近 Home 指示条（用户实测截图比例）
+            let bottomPad = geo.safeAreaInsets.bottom * 0.12 // 贴近 Home 指示条（对齐 PWA 间距比例）
             let barHeight = 56 + bottomPad
             ZStack(alignment: .bottom) {
                 // 内容区（五个 Tab 常驻保活，切换不重载；延伸进底部安全区，底栏高度由 padding 让出）
@@ -62,6 +62,40 @@ struct MainTabView: View {
                     }
                 )
                 .ignoresSafeArea(edges: .bottom) // 底栏延伸进 Home 指示条区，底部留白由 bottomPad 承担
+
+                // 新功能悬浮提示卡（网页 PostFeatureTip：bottom-16 right-4 w-64，消息页不显示）
+                HStack {
+                    Spacer()
+                    PostFeatureTipView(onMessagesTab: tab == 3) {
+                        tab = 3
+                        resetIDs[3] += 1
+                        NotificationCenter.default.post(name: .mslShowPosts, object: nil)
+                    }
+                    .padding(.trailing, 16)
+                    .padding(.bottom, barHeight + 8)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+
+                // 封禁横幅（网页 BanBanner：fixed inset-x-0 top-0 bg-red-600/95 text-xs，z-60）
+                if let ban = authManager.banInfo {
+                    VStack(spacing: 0) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.shield.fill")
+                                .font(.system(size: 12))
+                            Text(Self.banText(ban))
+                                .font(.system(size: 12, weight: .medium))
+                                .multilineTextAlignment(.center)
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 16)
+                        .padding(.top, geo.safeAreaInsets.top + 8)
+                        .padding(.bottom, 8)
+                        .background(Color(red: 220/255, green: 38/255, blue: 38/255).opacity(0.95))
+                        Spacer(minLength: 0)
+                    }
+                    .ignoresSafeArea(edges: .top)
+                }
             }
         }
         .ignoresSafeArea(.keyboard)
@@ -74,6 +108,21 @@ struct MainTabView: View {
         .onReceive(NotificationCenter.default.publisher(for: .didReceivePush)) { _ in
             if authManager.isAuthenticated { tab = 3; resetIDs[3] += 1 }
         }
+    }
+
+    // MARK: 封禁文案（逐行复刻网页 BanBanner.tsx）
+    static func banText(_ ban: BanInfo) -> String {
+        if ban.permanent == true {
+            return "账号已被永久封禁，期间仅可浏览公开内容"
+        }
+        var untilStr = ""
+        if let until = ban.until, let d = DateFmt.parse(until) {
+            let f = DateFormatter()
+            f.locale = Locale(identifier: "zh_CN")
+            f.dateFormat = "yyyy/M/d"
+            untilStr = f.string(from: d)
+        }
+        return "账号已被封禁（剩余 \(ban.daysLeft ?? 0) 天，预计 \(untilStr) 恢复），期间仅可浏览公开内容"
     }
 
     // 普通标签：图标 24 + 文字 10，选中变主色（网页：active 仅 text-primary）

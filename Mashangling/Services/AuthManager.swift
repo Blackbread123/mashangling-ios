@@ -9,9 +9,17 @@ class AuthManager: ObservableObject {
     @Published var currentUser: User? = nil
     @Published var isLoading = false
     @Published var isAuthenticated = false
+    /// 封禁状态（2026-10-08 网页 BanBanner）：非 nil 表示封禁中，仅可浏览公开内容
+    @Published var banInfo: BanInfo? = nil
+
+    private var banTimer: Timer?
 
     private init() {
         Task { await checkAuth() }
+        // 网页：banInfo 每 5 分钟轮询
+        banTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
+            Task { await self?.refreshBanInfo() }
+        }
     }
 
     /// 检查登录状态（URLSession 自动管理 Cookie，尝试直接拉取用户信息）
@@ -28,6 +36,17 @@ class AuthManager: ObservableObject {
         } catch {
             // 网络错误时不清除状态，下次再试
             isAuthenticated = false
+        }
+        await refreshBanInfo()
+    }
+
+    /// 拉取封禁状态（publicQuery：即使 auth.me 失败/被封禁也能拿到）
+    func refreshBanInfo() async {
+        do {
+            let info: BanInfo? = try await MashanglingAPI.shared.auth.banInfo()
+            banInfo = (info?.banned == true) ? info : nil
+        } catch {
+            // 静默失败：保持当前状态
         }
     }
 
