@@ -12,7 +12,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // cleanExpiredCache 是 actor 方法，需要在 Task 中调用
 
         // 后台拉取未读消息：旧版 fetch 间隔 + 新版 BGTaskScheduler 双保险
-        application.setMinimumBackgroundFetchInterval(UIApplicationBackgroundFetchIntervalMinimum)
+        application.setMinimumBackgroundFetchInterval(UIApplication.backgroundFetchIntervalMinimum)
         BackgroundRefreshManager.register()
         return true
     }
