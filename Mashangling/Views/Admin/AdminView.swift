@@ -132,6 +132,7 @@ struct AdminView: View {
             }
             .padding(16)
         }
+        .scrollDismissesKeyboard(.interactively)
     }
 
     // MARK: 数据库备份卡（网页：rounded-xl border bg-card p-4）
@@ -855,6 +856,7 @@ struct AdminTagsView: View {
             }
             .padding(16)
         }
+        .scrollDismissesKeyboard(.interactively)
     }
 
     private func tagRow(_ t: AdminTagRow) -> some View {

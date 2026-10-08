@@ -88,6 +88,13 @@ struct ContentView: View {
         }
         // 全局底色铺满安全区：状态栏/底部 Home 指示条区域不再是窗口默认黑底
         .background(Color.appBackground.ignoresSafeArea())
+        // 点按输入框以外的任意位置收起键盘（simultaneousGesture 不影响按钮与其它控件）
+        .simultaneousGesture(
+            TapGesture().onEnded {
+                UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
+                                                to: nil, from: nil, for: nil)
+            }
+        )
         .overlay(ToastOverlay())
     }
 }

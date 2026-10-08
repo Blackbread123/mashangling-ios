@@ -119,6 +119,7 @@ struct MessagesView: View {
                         .padding(.top, 24)
                         .padding(.bottom, 24)
                     }
+                    .scrollDismissesKeyboard(.interactively)
                     .refreshable { await loadMessages() }
                 }
             }

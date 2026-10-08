@@ -332,6 +332,7 @@ struct PublishView: View {
             .padding(.horizontal, 16)
             .padding(.top, 12)
         }
+        .scrollDismissesKeyboard(.interactively)
         .background(Color.appBackground)
         .background(
             NavigationLink(destination: ShowcaseDetailView(showcaseId: publishedId ?? 0),

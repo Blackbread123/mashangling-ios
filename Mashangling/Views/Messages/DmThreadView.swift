@@ -57,6 +57,7 @@ struct DmThreadView: View {
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                 }
+                .scrollDismissesKeyboard(.interactively)
                 .onChange(of: thread?.items.count) { _ in
                     if let last = thread?.items.last {
                         withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
