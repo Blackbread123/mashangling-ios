@@ -33,6 +33,8 @@ struct AdminView: View {
     // 数据库备份（仅主管理员）
     @State private var backups: BackupListResponse? = nil
     @State private var backupBusy = false
+    // 动态管理入口角标（2026-10-09，仅主管理员）
+    @State private var postPending = 0
 
     private var isAdmin: Bool { authManager.currentUser?.role == "admin" }
     private var isSuper: Bool { authManager.currentUser?.superAdmin == true }
@@ -63,6 +65,7 @@ struct AdminView: View {
         .navigationTitle("管理后台")
         .background(Color.appBackground)
         .task { await load() }
+        .onAppear { Task { await refreshPostPending() } }
         .refreshable { await load() }
         .alert("权限管理", isPresented: Binding(get: { roleConfirm != nil }, set: { if !$0 { roleConfirm = nil } })) {
             Button("取消", role: .cancel) {}
@@ -105,6 +108,7 @@ struct AdminView: View {
                         recentUsersCard.padding(.top, 16)
                     }
                     roleCard.padding(.top, 16)
+                    postAdminEntry.padding(.top, 16)
                 }
 
                 // 举报列表
@@ -133,6 +137,35 @@ struct AdminView: View {
             .padding(16)
         }
         .scrollDismissesKeyboard(.interactively)
+    }
+
+    // MARK: 动态管理入口卡（2026-10-09 网页新功能：右侧红色圆形角标显示待审阅数，>99 显示 99+，为 0 不显示）
+    private var postAdminEntry: some View {
+        NavigationLink(destination: AdminPostsView()) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("动态管理")
+                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(Color.appForeground)
+                    Text("审阅 / 收藏 / 删除用户动态")
+                        .font(.system(size: 12)).foregroundStyle(Color.appMutedFg)
+                }
+                Spacer()
+                if postPending > 0 {
+                    Text(postPending > 99 ? "99+" : "\(postPending)")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Color.appDestructiveFg)
+                        .padding(.horizontal, 7).padding(.vertical, 2)
+                        .background(Color.appDestructive).clipShape(Capsule())
+                }
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.appMutedFg)
+            }
+            .padding(16)
+            .background(Color.appCard)
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 0.5))
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: 数据库备份卡（网页：rounded-xl border bg-card p-4）
@@ -625,7 +658,14 @@ struct AdminView: View {
         if isSuper {
             recentUsers = (try? await MashanglingAPI.shared.admin.recentUsers()) ?? []
             backups = try? await MashanglingAPI.shared.admin.backupList()
+            postPending = (try? await MashanglingAPI.shared.admin.postPendingCount()) ?? 0
         }
+    }
+
+    /// 从动态管理页返回时刷新角标（网页：30s 轮询；App 进入后台页时拉取一次）
+    private func refreshPostPending() async {
+        guard isSuper else { return }
+        postPending = (try? await MashanglingAPI.shared.admin.postPendingCount()) ?? 0
     }
 
     private func loadGrowth() async {
@@ -985,5 +1025,240 @@ private struct AdminTagEditSheet: View {
             }
         }
         .presentationDetents([.medium])
+    }
+}
+
+// MARK: - 动态管理（2026-10-09 网页新功能，仅主管理员；照网页 AdminPosts 实现）
+// 三 Tab（待审阅/收藏动态/全部）+ cursor 分页 + 徽标（已删除/置顶/已审阅/★）+ 长按操作菜单
+struct AdminPostsView: View {
+    private enum ViewKey: String, CaseIterable {
+        case pending, favorites, all
+        var label: String {
+            switch self {
+            case .pending: return "待审阅"
+            case .favorites: return "收藏动态"
+            case .all: return "全部"
+            }
+        }
+    }
+
+    @State private var view: ViewKey = .pending
+    @State private var items: [AdminPostItem] = []
+    @State private var nextCursor: Int? = nil
+    @State private var loading = false
+    @State private var loaded = false
+    @State private var menuFor: AdminPostItem? = nil
+    @State private var deleteTarget: AdminPostItem? = nil
+    @State private var busy = false
+
+    var body: some View {
+        ScrollView {
+            LazyVStack(spacing: 12) {
+                // 顶部三 Tab（对应网页 view 参数）
+                HStack(spacing: 8) {
+                    ForEach(ViewKey.allCases, id: \.rawValue) { v in
+                        PillButton(title: v.label, selected: view == v) { switchView(v) }
+                    }
+                    Spacer()
+                }
+                .padding(.bottom, 4)
+
+                if loaded && items.isEmpty && !loading {
+                    Text("暂无动态")
+                        .font(.system(size: 14)).foregroundStyle(Color.appMutedFg)
+                        .frame(maxWidth: .infinity).padding(.vertical, 64)
+                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, style: StrokeStyle(lineWidth: 0.5, dash: [4, 3])))
+                }
+
+                ForEach(items) { p in
+                    card(p)
+                        .onAppear {
+                            if p.id == items.last?.id { Task { await loadMore() } }
+                        }
+                }
+
+                if loading {
+                    ProgressView().padding(.vertical, 12)
+                } else if loaded && nextCursor == nil && !items.isEmpty {
+                    Text("没有更多了")
+                        .font(.system(size: 12)).foregroundStyle(Color.appMutedFg)
+                        .padding(.vertical, 12)
+                }
+            }
+            .padding(16)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .navigationTitle("动态管理")
+        .background(Color.appBackground)
+        .task { await reload() }
+        .refreshable { await reload() }
+        // 长按操作菜单（网页：标记已审阅/收藏/删除/取消）
+        .confirmationDialog("动态操作",
+                            isPresented: Binding(get: { menuFor != nil }, set: { if !$0 { menuFor = nil } }),
+                            titleVisibility: .visible) {
+            if let p = menuFor {
+                Button(p.reviewed == true ? "取消已审阅" : "标记已审阅") {
+                    Task { await mark(p, mark: "reviewed", on: !(p.reviewed ?? false)) }
+                }
+                Button(p.favorited == true ? "取消收藏" : "收藏") {
+                    Task { await mark(p, mark: "favorited", on: !(p.favorited ?? false)) }
+                }
+                if p.status != "deleted" {
+                    Button("删除动态", role: .destructive) { deleteTarget = p }
+                }
+                Button("取消", role: .cancel) {}
+            }
+        }
+        // 删除二次确认（网页同款弹窗）
+        .alert("删除动态",
+               isPresented: Binding(get: { deleteTarget != nil }, set: { if !$0 { deleteTarget = nil } })) {
+            Button("取消", role: .cancel) {}
+            Button("删除", role: .destructive) {
+                if let p = deleteTarget { Task { await remove(p) } }
+            }
+        } message: {
+            Text("删除后动态对普通用户不可见（软删除），「全部」中仍会保留并显示已删除徽标。确定删除？")
+        }
+    }
+
+    // MARK: 动态卡片（角落徽标：已删除 / 置顶 / 已审阅 / ★）
+    private func card(_ p: AdminPostItem) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                AvatarView(path: p.author?.avatar, name: p.author?.name ?? "U", size: 32)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(p.author?.name ?? "未知用户")
+                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.appForeground)
+                    Text(postTimeAgo(p.createdAt ?? ""))
+                        .font(.system(size: 11)).foregroundStyle(Color.appMutedFg)
+                }
+                Spacer()
+            }
+            Text(p.content ?? "")
+                .font(.system(size: 14))
+                .foregroundStyle(Color.appForeground)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 8)
+            if let imgs = p.images, !imgs.isEmpty {
+                HStack(spacing: 6) {
+                    ForEach(Array(imgs.prefix(3).enumerated()), id: \.offset) { _, src in
+                        AppImage(path: src)
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 56, height: 56)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                    }
+                    if imgs.count > 3 {
+                        Text("+\(imgs.count - 3)")
+                            .font(.system(size: 11)).foregroundStyle(Color.appMutedFg)
+                    }
+                    Spacer()
+                }
+                .padding(.top, 8)
+            }
+            HStack(spacing: 10) {
+                Text("❤ \(p.likeCount ?? 0)").font(.system(size: 11)).foregroundStyle(Color.appMutedFg)
+                Text("💬 \(p.commentCount ?? 0)").font(.system(size: 11)).foregroundStyle(Color.appMutedFg)
+                Spacer()
+                Text("#\(p.id)").font(.system(size: 11)).foregroundStyle(Color.appMutedFg)
+            }
+            .padding(.top, 8)
+        }
+        .padding(12)
+        .padding(.top, 6)
+        .background(Color.appCard)
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .overlay(alignment: .topTrailing) { badges(p).padding(8) }
+        .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 0.5))
+        .contentShape(Rectangle())
+        .onLongPressGesture { menuFor = p }
+    }
+
+    @ViewBuilder
+    private func badges(_ p: AdminPostItem) -> some View {
+        HStack(spacing: 4) {
+            if p.status == "deleted" {
+                MiniBadge(text: "已删除", fg: .appDestructiveFg, bg: .appDestructive)
+            }
+            if p.pinned == true {
+                MiniBadge(text: "置顶", fg: .twAmber600, bg: Color.twAmber500.opacity(0.12))
+            }
+            if p.reviewed == true {
+                MiniBadge(text: "已审阅", fg: Color(h: 142, s: 71, l: 45), bg: Color(h: 142, s: 71, l: 45).opacity(0.12))
+            }
+            if p.favorited == true {
+                MiniBadge(text: "★", fg: .twAmber600, bg: Color.twAmber500.opacity(0.12))
+            }
+        }
+    }
+
+    // MARK: 数据与操作（成功后本地更新该条 + 按 Tab 规则移除，不整页重拉）
+
+    private func switchView(_ v: ViewKey) {
+        guard v != view else { return }
+        view = v
+        Task { await reload() }
+    }
+
+    private func reload() async {
+        loading = true
+        defer { loading = false }
+        do {
+            let r = try await MashanglingAPI.shared.admin.postList(view: view.rawValue)
+            items = r.items ?? []
+            nextCursor = r.nextCursor
+            loaded = true
+        } catch { ToastCenter.shared.error(error.localizedDescription) }
+    }
+
+    private func loadMore() async {
+        guard !loading, loaded, let c = nextCursor else { return }
+        loading = true
+        defer { loading = false }
+        do {
+            let r = try await MashanglingAPI.shared.admin.postList(view: view.rawValue, cursor: c)
+            items += r.items ?? []
+            nextCursor = r.nextCursor
+        } catch { ToastCenter.shared.error(error.localizedDescription) }
+    }
+
+    private func mark(_ p: AdminPostItem, mark: String, on: Bool) async {
+        guard !busy else { return }
+        busy = true
+        defer { busy = false }
+        do {
+            _ = try await MashanglingAPI.shared.admin.postMark(id: p.id, mark: mark, on: on)
+            updateLocal(p.id) { item in
+                if mark == "reviewed" { item.reviewed = on }
+                if mark == "favorited" { item.favorited = on }
+            }
+        } catch { ToastCenter.shared.error(error.localizedDescription) }
+    }
+
+    private func remove(_ p: AdminPostItem) async {
+        guard !busy else { return }
+        busy = true
+        defer { busy = false }
+        do {
+            _ = try await MashanglingAPI.shared.admin.postDelete(id: p.id)
+            ToastCenter.shared.success("已删除")
+            updateLocal(p.id) { $0.status = "deleted" }
+        } catch { ToastCenter.shared.error(error.localizedDescription) }
+    }
+
+    /// 本地更新该条；随后按 Tab 规则移除（待审阅里已审阅的消失；收藏里取消收藏的消失；删除的在待审阅/收藏里消失）
+    private func updateLocal(_ id: Int, _ mutate: (inout AdminPostItem) -> Void) {
+        guard let i = items.firstIndex(where: { $0.id == id }) else { return }
+        mutate(&items[i])
+        let item = items[i]
+        let shouldRemove: Bool
+        switch view {
+        case .pending:
+            shouldRemove = (item.reviewed == true) || item.status == "deleted"
+        case .favorites:
+            shouldRemove = (item.favorited != true) || item.status == "deleted"
+        case .all:
+            shouldRemove = false
+        }
+        if shouldRemove { items.remove(at: i) }
     }
 }

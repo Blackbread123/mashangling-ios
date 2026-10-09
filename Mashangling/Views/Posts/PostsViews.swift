@@ -88,6 +88,7 @@ struct PostCardView: View {
     @State private var draft = ""
     @State private var replyTo: (id: Int, name: String)? = nil
     @State private var sending = false
+    @State private var pushShowcase = false
 
     init(post: Post, onPreview: @escaping (String) -> Void = { _ in },
          onChanged: @escaping () -> Void = {}, onDeleted: @escaping (Int) -> Void = { _ in },
@@ -116,6 +117,7 @@ struct PostCardView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.top, 10)
             imageGrid
+            showcaseCard
             actionRow
             if commentsOpen { commentsSection }
         }
@@ -123,6 +125,9 @@ struct PostCardView: View {
         .background(Color.appCard)
         .cornerRadius(12)
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.appBorder, lineWidth: 0.5))
+        .navigationDestination(isPresented: $pushShowcase) {
+            ShowcaseDetailView(showcaseId: post.showcase?.id ?? 0)
+        }
         // 「⋯」下拉菜单（网页：absolute right-0 top-full mt-1 w-28 rounded-xl border bg-background shadow-lg py-1）
         .overlay {
             if menuOpen {
@@ -220,6 +225,51 @@ struct PostCardView: View {
                     .padding(6)
             }
             .buttonStyle(.plain)
+        }
+    }
+
+    // MARK: 联动橱窗快照卡（2026-10-09：发布橱窗自动发动态；active=false 置灰、点击提示不可见）
+    @ViewBuilder
+    private var showcaseCard: some View {
+        if let sc = post.showcase {
+            let active = sc.active ?? false
+            Button {
+                if active {
+                    pushShowcase = true
+                } else {
+                    ToastCenter.info("橱窗已不可见")
+                }
+            } label: {
+                HStack(spacing: 10) {
+                    AppImage(path: sc.coverUrl)
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 48, height: 48)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.appBorder, lineWidth: 0.5))
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(sc.title ?? "")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(active ? .appForeground : .appMutedFg)
+                            .lineLimit(1)
+                        Text(active ? "橱窗 · 点击查看" : "橱窗已不可见")
+                            .font(.system(size: 11))
+                            .foregroundColor(.appMutedFg)
+                    }
+                    Spacer()
+                    if active {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.appMutedFg)
+                    }
+                }
+                .padding(8)
+                .background(Color.appSecondary.opacity(0.5))
+                .cornerRadius(10)
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.appBorder, lineWidth: 0.5))
+            }
+            .buttonStyle(.plain)
+            .opacity(active ? 1 : 0.6)
+            .padding(.top, 10)
         }
     }
 

@@ -1737,6 +1737,15 @@ struct Post: Codable, Identifiable {
     let likedByMe: Bool?
     let mine: Bool?
     let pinned: Bool?
+    let showcase: PostShowcaseSnapshot?   // 2026-10-09：发布橱窗自动发动态的橱窗快照，普通动态为 null
+}
+
+/// 动态联动的橱窗快照（2026-10-09 post-router：active=false 表示已下架/删除，不可点击）
+struct PostShowcaseSnapshot: Codable {
+    let id: Int
+    let title: String?
+    let coverUrl: String?     // /api/cover/:id?v= 相对路径，走 SiteConfig.absoluteURL
+    let active: Bool?
 }
 
 struct PostFeedResponse: Codable {
@@ -1774,6 +1783,26 @@ struct PostComment: Codable, Identifiable {
 struct PostCreateResult: Codable { let id: Int? }
 struct PostLikeResult: Codable { let liked: Bool? }
 struct PostPinResult: Codable { let pinned: Bool? }
+
+// MARK: - 动态管理（admin.post*，2026-10-09，仅主管理员）
+struct AdminPostItem: Codable, Identifiable {
+    let id: Int
+    let content: String?
+    let images: [String]?
+    let createdAt: String?
+    let author: PostAuthor?
+    let likeCount: Int?
+    let commentCount: Int?
+    var status: String?        // deleted 时显示「已删除」徽标
+    var pinned: Bool?
+    var reviewed: Bool?
+    var favorited: Bool?
+}
+
+struct AdminPostListResponse: Codable {
+    let items: [AdminPostItem]?
+    let nextCursor: Int?
+}
 
 // MARK: - 封禁状态（auth.banInfo，2026-10-08）
 struct BanInfo: Codable {

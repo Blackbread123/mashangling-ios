@@ -1362,6 +1362,36 @@ actor MashanglingAPI {
         func backupNow() async throws -> BackupNowResult {
             try await client.post("admin.backupNow")
         }
+
+        // MARK: 动态管理（2026-10-09，仅主管理员）
+
+        /// 待审阅动态数（入口角标用）
+        func postPendingCount() async throws -> Int {
+            struct R: Codable { let count: Int? }
+            let r: R = try await client.get("admin.postPendingCount", cacheable: false)
+            return r.count ?? 0
+        }
+
+        /// 动态管理列表：view = pending / favorites / all，cursor 分页
+        func postList(view: String, cursor: Int? = nil, limit: Int = 20) async throws -> AdminPostListResponse {
+            var input: [String: Any] = ["view": view, "limit": limit]
+            if let c = cursor { input["cursor"] = c }
+            return try await client.get("admin.postList", input: input, cacheable: false)
+        }
+
+        /// 标记/取消标记（reviewed / favorited），幂等
+        func postMark(id: Int, mark: String, on: Bool) async throws -> Bool {
+            let r: OkResponse = try await client.post("admin.postMark", input: [
+                "id": id, "mark": mark, "on": on,
+            ])
+            return r.ok ?? false
+        }
+
+        /// 软删除动态（status → deleted）
+        func postDelete(id: Int) async throws -> Bool {
+            let r: OkResponse = try await client.post("admin.postDelete", input: ["id": id])
+            return r.ok ?? false
+        }
     }
 
     // MARK: - 服务实例
