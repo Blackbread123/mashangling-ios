@@ -206,7 +206,7 @@ struct ShopView: View {
                 .padding(.top, 4)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            // 跳转目标：theme→卡片工作室，hen→农场，egg→我的主页（对应网页 editPath / /u/:id）
+            // 跳转目标：theme→卡片工作室，hen→个性化页母鸡管理（网页：卡片/母鸡都在「个性化」页），egg→我的主页
             NavigationLink(destination: itemDestination(item.key)) {
                 HStack(spacing: 4) {
                     Text(item.editLabel ?? "去管理")
@@ -230,7 +230,7 @@ struct ShopView: View {
     private func itemDestination(_ key: String) -> some View {
         switch key {
         case "theme": CardStudioView()
-        case "hen":   FarmView(userId: authManager.currentUser?.id ?? 0)
+        case "hen":   CardStudioView()
         default:      ProfileView(userId: authManager.currentUser?.id ?? 0)
         }
     }

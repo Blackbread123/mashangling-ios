@@ -459,11 +459,16 @@ struct CardStudioView: View {
                     // 可拖动热区（虚线框，与素材位置对应）
                     ForEach(Array(stickers.enumerated()), id: \.element.id) { i, st in
                         RoundedRectangle(cornerRadius: 3)
-                            .stroke(Color.appPrimary.opacity(0.6), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4]))
+                            .fill(Color.appPrimary.opacity(0.06))
+                            .overlay(RoundedRectangle(cornerRadius: 3)
+                                .stroke(Color.appPrimary.opacity(0.6), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])))
                             .frame(width: w * st.scale, height: w * st.scale)
+                            // 关键：只有描边的形状默认只有虚线本身可命中，必须显式给整块热区
+                            .contentShape(RoundedRectangle(cornerRadius: 3))
                             .offset(x: w * st.x, y: h * st.y)
-                            .gesture(
-                                DragGesture()
+                            // highPriority：压住外层 ScrollView 的滚动手势，贴纸上一按下就能拖（网页 pointer capture 同款手感）
+                            .highPriorityGesture(
+                                DragGesture(minimumDistance: 2)
                                     .onChanged { v in
                                         let start = dragStart(for: i, fallback: st)
                                         let nx = start.x + v.translation.width / w
