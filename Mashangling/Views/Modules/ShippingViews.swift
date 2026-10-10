@@ -346,7 +346,7 @@ struct ShippingView: View {
                 .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.appPrimary.opacity(0.3), lineWidth: 1))
                 .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
                 .padding(.horizontal, 16)
-                .padding(.bottom, 8)
+                .padding(.bottom, 68)
             }
         }
     }
