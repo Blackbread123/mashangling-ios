@@ -1050,6 +1050,10 @@ struct AdminPostsView: View {
     @State private var menuFor: AdminPostItem? = nil
     @State private var deleteTarget: AdminPostItem? = nil
     @State private var busy = false
+    // 大图浏览（2026-10-10：左右滑动/箭头切换 + 第 X/共 Y 张 + 点空白关闭）
+    @State private var viewerImages: [String] = []
+    @State private var viewerIndex = 0
+    @State private var viewerOpen = false
 
     var body: some View {
         ScrollView {
@@ -1103,13 +1107,16 @@ struct AdminPostsView: View {
                 Button(p.favorited == true ? "取消收藏" : "收藏") {
                     Task { await mark(p, mark: "favorited", on: !(p.favorited ?? false)) }
                 }
-                if p.status != "deleted" {
+                if p.status == "deleted" {
+                    // 已删除：绿色「恢复动态」（2026-10-10 admin.postRestore，误删可一键找回）
+                    Button("恢复动态") { Task { await restore(p) } }
+                } else {
                     Button("删除动态", role: .destructive) { deleteTarget = p }
                 }
                 Button("取消", role: .cancel) {}
             }
         }
-        // 删除二次确认（网页同款弹窗）
+        // 删除二次确认（软删除，可在「全部」里长按恢复）
         .alert("删除动态",
                isPresented: Binding(get: { deleteTarget != nil }, set: { if !$0 { deleteTarget = nil } })) {
             Button("取消", role: .cancel) {}
@@ -1117,7 +1124,10 @@ struct AdminPostsView: View {
                 if let p = deleteTarget { Task { await remove(p) } }
             }
         } message: {
-            Text("删除后动态对普通用户不可见（软删除），「全部」中仍会保留并显示已删除徽标。确定删除？")
+            Text("删除后动态对普通用户不可见（软删除），仍可在「全部」里长按恢复。确定删除？")
+        }
+        .fullScreenCover(isPresented: $viewerOpen) {
+            AdminImageViewer(images: viewerImages, index: $viewerIndex) { viewerOpen = false }
         }
     }
 
@@ -1140,18 +1150,23 @@ struct AdminPostsView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.top, 8)
             if let imgs = p.images, !imgs.isEmpty {
-                HStack(spacing: 6) {
-                    ForEach(Array(imgs.prefix(3).enumerated()), id: \.offset) { _, src in
-                        AppImage(path: src)
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 56, height: 56)
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                // 横向可滑动缩略图行（网页：64×64 圆角小图，点开大图浏览；点击不触发长按菜单）
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(Array(imgs.enumerated()), id: \.offset) { idx, src in
+                            AppImage(path: src)
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 64, height: 64)
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.appBorder, lineWidth: 0.5))
+                                .onTapGesture {
+                                    viewerImages = imgs
+                                    viewerIndex = idx
+                                    viewerOpen = true
+                                }
+                                .onLongPressGesture {} // 拦截长按，避免误触卡片操作菜单
+                        }
                     }
-                    if imgs.count > 3 {
-                        Text("+\(imgs.count - 3)")
-                            .font(.system(size: 11)).foregroundStyle(Color.appMutedFg)
-                    }
-                    Spacer()
                 }
                 .padding(.top, 8)
             }
@@ -1245,6 +1260,18 @@ struct AdminPostsView: View {
         } catch { ToastCenter.shared.error(error.localizedDescription) }
     }
 
+    /// 恢复误删（2026-10-10 admin.postRestore，幂等）
+    private func restore(_ p: AdminPostItem) async {
+        guard !busy else { return }
+        busy = true
+        defer { busy = false }
+        do {
+            _ = try await MashanglingAPI.shared.admin.postRestore(id: p.id)
+            ToastCenter.shared.success("已恢复")
+            updateLocal(p.id) { $0.status = "active" }
+        } catch { ToastCenter.shared.error(error.localizedDescription) }
+    }
+
     /// 本地更新该条；随后按 Tab 规则移除（待审阅里已审阅的消失；收藏里取消收藏的消失；删除的在待审阅/收藏里消失）
     private func updateLocal(_ id: Int, _ mutate: (inout AdminPostItem) -> Void) {
         guard let i = items.firstIndex(where: { $0.id == id }) else { return }
@@ -1260,5 +1287,53 @@ struct AdminPostsView: View {
             shouldRemove = false
         }
         if shouldRemove { items.remove(at: i) }
+    }
+}
+
+// MARK: - 动态管理大图浏览（2026-10-10：左右滑动/箭头切换 + 第 X/共 Y 张 + 点空白关闭）
+private struct AdminImageViewer: View {
+    let images: [String]
+    @Binding var index: Int
+    let onClose: () -> Void
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.9).ignoresSafeArea()
+                .onTapGesture { onClose() }
+            TabView(selection: $index) {
+                ForEach(Array(images.enumerated()), id: \.offset) { i, src in
+                    AppImage(path: src)
+                        .aspectRatio(contentMode: .fit)
+                        .cornerRadius(12)
+                        .padding(16)
+                        .tag(i)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            VStack {
+                Spacer()
+                HStack {
+                    Button { if index > 0 { withAnimation { index -= 1 } } } label: {
+                        Image(systemName: "chevron.left.circle.fill")
+                            .font(.system(size: 28))
+                            .foregroundColor(.white.opacity(index > 0 ? 0.9 : 0.3))
+                    }
+                    .disabled(index <= 0)
+                    Spacer()
+                    Text("第 \(index + 1) / 共 \(images.count) 张")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.white.opacity(0.9))
+                    Spacer()
+                    Button { if index < images.count - 1 { withAnimation { index += 1 } } } label: {
+                        Image(systemName: "chevron.right.circle.fill")
+                            .font(.system(size: 28))
+                            .foregroundColor(.white.opacity(index < images.count - 1 ? 0.9 : 0.3))
+                    }
+                    .disabled(index >= images.count - 1)
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 40)
+            }
+        }
     }
 }

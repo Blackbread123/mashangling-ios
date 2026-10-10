@@ -1091,6 +1091,11 @@ actor MashanglingAPI {
             try await client.get("address.myShipments")
         }
 
+        /// 发货处理进度：我发送过地址的橱窗在发布者后台的排队位置（2026-10-10）
+        func myShipQueue() async throws -> ShipQueueResponse {
+            try await client.get("address.myShipQueue", cacheable: false)
+        }
+
         /// 填单号寄件
         func ship(shareId: Int, trackingNo: String) async throws -> Bool {
             let r: OkResponse = try await client.post("address.ship", input: [
@@ -1390,6 +1395,12 @@ actor MashanglingAPI {
         /// 软删除动态（status → deleted）
         func postDelete(id: Int) async throws -> Bool {
             let r: OkResponse = try await client.post("admin.postDelete", input: ["id": id])
+            return r.ok ?? false
+        }
+
+        /// 恢复被软删的动态（status → active，幂等，2026-10-10）
+        func postRestore(id: Int) async throws -> Bool {
+            let r: OkResponse = try await client.post("admin.postRestore", input: ["id": id])
             return r.ok ?? false
         }
     }

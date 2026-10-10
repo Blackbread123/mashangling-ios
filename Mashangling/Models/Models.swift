@@ -1409,9 +1409,25 @@ struct ReceivedAddresses: Codable {
     }
 }
 
+// MARK: - 发货处理进度（address.myShipQueue，2026-10-10）
+struct ShipQueueResponse: Codable {
+    let items: [ShipQueueItem]?
+
+    struct ShipQueueItem: Codable, Identifiable {
+        let shareId: Int
+        let showcaseId: Int?
+        let title: String?
+        let removed: Bool?
+        let sentAt: String?
+        let shipState: String?    // ""=未下单排队中 / preorder / ordered / external / cancelled
+        let position: Int?        // 排队第几位（非未下单状态为 null）
+        let totalPending: Int?    // 该发布者未下单总数（同上）
+        var id: Int { shareId }
+    }
+}
+
 /// 我的快递（address.myShipments）
-struct MyShipmentsResponse: Codable {
-    let groups: [MyShipGroup]?
+struct MyShipmentsResponse: Codable {    let groups: [MyShipGroup]?
     let pendingFees: [PendingFee]?
 
     struct MyShipGroup: Codable, Identifiable {

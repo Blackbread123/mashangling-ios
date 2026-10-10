@@ -116,6 +116,8 @@ struct DmThreadView: View {
         .background(Color.appBackground)
         .navigationTitle(thread?.peer.name ?? peerName)
         .navigationBarTitleDisplayMode(.inline)
+        // 会话页隐藏底部 Tab：输入框获得完整底部空间，不再与导航条挤在一起
+        .toolbar(.hidden, for: .tabBar)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 NavigationLink(destination: ProfileView(userId: peerId)) {

@@ -2488,6 +2488,11 @@ struct MyShipmentsView: View {
     @State private var loading = true
     @State private var feeOpen = true
     @State private var now = Date()
+    // 发货处理进度（2026-10-10：折叠区块，展开才调接口）
+    @State private var queueOpen = false
+    @State private var queue: ShipQueueResponse? = nil
+    @State private var queueLoading = false
+    @State private var queuePushId: Int? = nil
 
     private var groups: [MyShipmentsResponse.MyShipGroup] { data?.groups ?? [] }
     private var pendingFees: [MyShipmentsResponse.PendingFee] { data?.pendingFees ?? [] }
@@ -2509,6 +2514,8 @@ struct MyShipmentsView: View {
                     .font(.system(size: 14))
                     .foregroundColor(.appMutedFg)
                     .padding(.top, 8)
+
+                shipQueueSection.padding(.top, 24)
 
                 if !loading && !pendingFees.isEmpty {
                     feeSection.padding(.top, 24)
@@ -2558,6 +2565,156 @@ struct MyShipmentsView: View {
         .task { await load() }
         .refreshable { await load() }
         .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) { now = $0 }
+        .navigationDestination(isPresented: Binding(get: { queuePushId != nil }, set: { if !$0 { queuePushId = nil } })) {
+            ShowcaseDetailView(showcaseId: queuePushId ?? 0)
+        }
+    }
+
+    // MARK: 发货处理进度（2026-10-10 网页 ShipQueueSection：折叠区块，点开才查接口）
+    private var shipQueueSection: some View {
+        VStack(spacing: 0) {
+            Button {
+                queueOpen.toggle()
+                if queueOpen && queue == nil { Task { await loadQueue() } }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "list.number")
+                        .font(.system(size: 14)).foregroundColor(.appPrimary)
+                    Text("发货处理进度")
+                        .font(.system(size: 14, weight: .semibold)).foregroundColor(.appForeground)
+                    Text("已发送地址的橱窗在发布者后台的排队位置")
+                        .font(.system(size: 12)).foregroundColor(.appMutedFg)
+                        .lineLimit(1)
+                        .layoutPriority(-1)
+                    Spacer(minLength: 4)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 12)).foregroundColor(.appMutedFg)
+                        .rotationEffect(.degrees(queueOpen ? 180 : 0))
+                }
+                .padding(.horizontal, 16).padding(.vertical, 12)
+            }
+            .buttonStyle(.plain)
+            if queueOpen {
+                Rectangle().fill(Color.appBorder.opacity(0.6)).frame(height: 0.5)
+                queueContent
+            }
+        }
+        .background(Color.appCard)
+        .cornerRadius(16)
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.appBorder, lineWidth: 0.5))
+    }
+
+    @ViewBuilder
+    private var queueContent: some View {
+        let items = queue?.items ?? []
+        if queueLoading && queue == nil {
+            HStack(spacing: 6) {
+                ProgressView().scaleEffect(0.7)
+                Text("正在查询排队位置…")
+                    .font(.system(size: 12)).foregroundColor(.appMutedFg)
+            }
+            .frame(maxWidth: .infinity).padding(.vertical, 32)
+        } else if items.isEmpty {
+            Text("你还没有发送过收货地址。")
+                .font(.system(size: 14)).foregroundColor(.appMutedFg)
+                .frame(maxWidth: .infinity).padding(.vertical, 32)
+        } else {
+            let queued = items.filter { $0.position != nil }
+            VStack(spacing: 0) {
+                if !queued.isEmpty {
+                    Text("\(queued.count) 个橱窗在排队中，按发送时间从先到后处理")
+                        .font(.system(size: 11)).foregroundColor(.appMutedFg)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 16).padding(.vertical, 8)
+                    Rectangle().fill(Color.appBorder.opacity(0.5)).frame(height: 0.5)
+                }
+                ForEach(Array(items.enumerated()), id: \.element.id) { idx, i in
+                    queueRow(i)
+                    if idx < items.count - 1 {
+                        Rectangle().fill(Color.appBorder.opacity(0.5)).frame(height: 0.5)
+                    }
+                }
+            }
+        }
+    }
+
+    private func queueRow(_ i: ShipQueueResponse.ShipQueueItem) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                if i.removed == true {
+                    Text(i.title ?? "")
+                        .font(.system(size: 14, weight: .medium)).foregroundColor(.appMutedFg)
+                        .lineLimit(1)
+                } else {
+                    Button { queuePushId = i.showcaseId } label: {
+                        Text(i.title ?? "")
+                            .font(.system(size: 14, weight: .medium)).foregroundColor(.appForeground)
+                            .lineLimit(1)
+                    }
+                    .buttonStyle(.plain)
+                }
+                Spacer(minLength: 8)
+                queueBadge(i)
+            }
+            Text(queueSubtitle(i) + sentDay(i.sentAt))
+                .font(.system(size: 11)).foregroundColor(.appMutedFg)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 12)
+    }
+
+    @ViewBuilder
+    private func queueBadge(_ i: ShipQueueResponse.ShipQueueItem) -> some View {
+        if let pos = i.position {
+            // 排队中：琥珀实色「第 X 位 / 共 Y 位未发货」
+            Text("第 \(pos) 位 / 共 \(i.totalPending ?? 0) 位未发货")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(.white)
+                .padding(.horizontal, 10).padding(.vertical, 4)
+                .background(Color.twAmber500).clipShape(Capsule())
+        } else {
+            let s = queueStateStyle(i.shipState ?? "")
+            Text(s.0)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(s.1)
+                .padding(.horizontal, 10).padding(.vertical, 4)
+                .background(s.2).clipShape(Capsule())
+                .overlay(Capsule().stroke(s.1.opacity(0.4), lineWidth: 0.5))
+        }
+    }
+
+    private func queueStateStyle(_ s: String) -> (String, Color, Color) {
+        switch s {
+        case "preorder":  return ("预下单", .twSky700, .twSky100)
+        case "ordered":   return ("已下单", .twEmerald700, .twEmerald100)
+        case "external":  return ("外部寄件", .twViolet700, .twViolet100)
+        case "cancelled": return ("已取消", .appPrimary, .appPrimary.opacity(0.1))
+        default:          return ("未下单", .twAmber700, .twAmber100)
+        }
+    }
+
+    private func queueSubtitle(_ i: ShipQueueResponse.ShipQueueItem) -> String {
+        if let pos = i.position {
+            return "发布者后台共 \(i.totalPending ?? 0) 个地址未发货，你的地址排在第 \(pos) 位"
+        }
+        switch i.shipState ?? "" {
+        case "ordered", "external": return "已发货处理，请到上方包裹列表查看单号"
+        case "preorder": return "已预下单，等待自动下单"
+        case "cancelled": return "该次寄件已取消"
+        default: return ""
+        }
+    }
+
+    private func sentDay(_ s: String?) -> String {
+        guard let s, let t = DateFmt.parse(s) else { return "" }
+        let c = Calendar.current.dateComponents([.month, .day], from: t)
+        return " · 地址发送于 \(c.month ?? 0)月\(c.day ?? 0)日"
+    }
+
+    private func loadQueue() async {
+        queueLoading = true
+        defer { queueLoading = false }
+        queue = try? await MashanglingAPI.shared.address.myShipQueue()
     }
 
     // MARK: 需补邮折叠卡
