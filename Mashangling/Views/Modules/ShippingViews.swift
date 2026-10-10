@@ -115,6 +115,10 @@ struct ShippingView: View {
     @State private var deleteTarget: ShipItem? = nil
     @State private var userShipRoute: Int? = nil
     @State private var exportItem: ExportFileItem? = nil
+    // 多选导出 + 长按橱窗标题删除（2026-10-10）
+    @State private var selectMode = false
+    @State private var selected: Set<Int> = []
+    @State private var showcaseDeleteTarget: (showcaseId: Int, title: String, count: Int)? = nil
 
     private static func loadCollapsed() -> [Int: Bool] {
         guard let data = UserDefaults.standard.data(forKey: "msl-shipping-collapsed"),
@@ -290,6 +294,60 @@ struct ShippingView: View {
             }
         } message: {
             Text("彻底删除这条寄件记录？与「隐藏」不同，删除后不可恢复。若该橱窗已没有其他寄件记录，橱窗也会一并删除。")
+        }
+        // 长按橱窗标题 → 彻底删除该橱窗所有寄件记录（2026-10-10，照网页确认弹窗）
+        .alert("删除该橱窗所有寄件记录？", isPresented: Binding(get: { showcaseDeleteTarget != nil }, set: { if !$0 { showcaseDeleteTarget = nil } })) {
+            Button("取消", role: .cancel) {}
+            Button("确认删除", role: .destructive) {
+                if let t = showcaseDeleteTarget { Task { await deleteShowcaseShares(t) } }
+            }
+        } message: {
+            if let t = showcaseDeleteTarget {
+                Text("「\(t.title)」共 \(t.count) 条寄件记录将被彻底删除。不论是否已下单或取消寄件，该橱窗下所有地址记录和补邮审批都会被直接删除，不可恢复。橱窗本身保留，不影响用户正常领取。")
+            }
+        }
+        // 多选模式底部工具条（网页：fixed bottom-16 rounded-2xl 已选N条 + 导出菜鸟模板 + 取消）
+        .overlay(alignment: .bottom) {
+            if selectMode {
+                HStack(spacing: 12) {
+                    Text("已选 \(selected.count) 条")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.appForeground)
+                    Spacer()
+                    Button { Task { await exportSelected() } } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrow.down")
+                                .font(.system(size: 12))
+                            Text("导出菜鸟模板")
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                        .foregroundColor(.appPrimaryFg)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color.appPrimary)
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(selected.isEmpty || busy)
+                    .opacity(selected.isEmpty ? 0.5 : 1)
+                    Button { selectMode = false; selected = [] } label: {
+                        Text("取消")
+                            .font(.system(size: 12))
+                            .foregroundColor(.appMutedFg)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .overlay(Capsule().stroke(Color.appBorder, lineWidth: 0.5))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(12)
+                .background(Color.appCard)
+                .cornerRadius(16)
+                .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.appPrimary.opacity(0.3), lineWidth: 1))
+                .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
+            }
         }
     }
 
@@ -701,6 +759,10 @@ struct ShippingView: View {
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(.appMutedFg)
                         .lineLimit(1)
+                        // 长按橱窗标题（500ms）：彻底删除该橱窗所有寄件记录（网页同款）
+                        .onLongPressGesture(minimumDuration: 0.5) {
+                            showcaseDeleteTarget = (g.showcaseId, g.title, g.items.count)
+                        }
                 } else {
                     NavigationLink(destination: ShowcaseDetailView(showcaseId: g.showcaseId)) {
                         Text(g.title)
@@ -709,6 +771,9 @@ struct ShippingView: View {
                             .lineLimit(1)
                     }
                     .buttonStyle(.plain)
+                    .simultaneousGesture(LongPressGesture(minimumDuration: 0.5).onEnded { _ in
+                        showcaseDeleteTarget = (g.showcaseId, g.title, g.items.count)
+                    })
                 }
                 if g.removed == true {
                     Text("已删除")
@@ -761,6 +826,21 @@ struct ShippingView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(busy)
+                // 多选导出（2026-10-10：进入后每条记录前出现圆形勾选框，底部弹工具条）
+                Button {
+                    selectMode.toggle()
+                    if !selectMode { selected = [] }
+                } label: {
+                    Text(selectMode ? "退出多选" : "多选导出")
+                        .font(.system(size: 11))
+                        .foregroundColor(selectMode ? .appPrimaryFg : .appMutedFg)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                        .background(selectMode ? Color.appPrimary : Color.clear)
+                        .clipShape(Capsule())
+                        .overlay(Capsule().stroke(selectMode ? Color.clear : Color.appBorder, lineWidth: 0.5))
+                }
+                .buttonStyle(.plain)
                 if (g.hiddenCount ?? 0) > 0 {
                     Button { Task { await unhideShowcase(g) } } label: {
                         HStack(spacing: 4) {
@@ -824,14 +904,24 @@ struct ShippingView: View {
     private func shipRow(_ a: ShipItem, group g: ShipGroup) -> some View {
         let isEditing = editing[a.id] != nil
         return VStack(alignment: .leading, spacing: 0) {
-            // 地址行 + 复制/隐藏
+            // 地址行 + 复制/隐藏（多选模式下前面带圆形勾选框，点勾选框或地址文字都能选中）
             HStack(alignment: .top, spacing: 8) {
+                if selectMode {
+                    Button { toggleSelect(a.id) } label: {
+                        Image(systemName: selected.contains(a.id) ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: 18))
+                            .foregroundColor(selected.contains(a.id) ? .appPrimary : .appMutedFg)
+                    }
+                    .buttonStyle(.plain)
+                }
                 Text(a.full ?? a.address)
                     .font(.system(size: 12))
                     .foregroundColor(.appForeground.opacity(0.9))
                     .lineSpacing(8)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture { if selectMode { toggleSelect(a.id) } }
                 Button {
                     UIPasteboard.general.string = a.full ?? a.address
                     ToastCenter.shared.success("地址已复制")
@@ -1873,6 +1963,41 @@ struct ShippingView: View {
             try data.write(to: url)
             exportItem = ExportFileItem(url: url)
             ToastCenter.shared.success("已导出 \(r.count ?? 0) 条菜鸟批量寄件模板，去菜鸟发货平台上传即可")
+        } catch { ToastCenter.shared.error(error.localizedDescription) }
+    }
+
+    // MARK: 多选导出 / 橱窗记录删除（2026-10-10）
+
+    private func toggleSelect(_ id: Int) {
+        if selected.contains(id) { selected.remove(id) } else { selected.insert(id) }
+    }
+
+    /// 多选导出菜鸟模板（导出后保持选择，由用户手动退出，照网页行为）
+    private func exportSelected() async {
+        guard !selected.isEmpty else { ToastCenter.shared.error("请先勾选要导出的记录"); return }
+        busy = true
+        defer { busy = false }
+        do {
+            let r = try await MashanglingAPI.shared.address.exportCainiao(shareIds: Array(selected))
+            guard let data = Data(base64Encoded: r.base64) else {
+                ToastCenter.shared.error("表格数据解析失败"); return
+            }
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent(r.filename)
+            try data.write(to: url)
+            exportItem = ExportFileItem(url: url)
+            ToastCenter.shared.success("已导出 \(r.count ?? 0) 条菜鸟批量寄件模板，去菜鸟发货平台上传即可")
+        } catch { ToastCenter.shared.error(error.localizedDescription) }
+    }
+
+    /// 彻底删除该橱窗下所有寄件记录（不删橱窗本身），成功后刷新列表
+    private func deleteShowcaseShares(_ t: (showcaseId: Int, title: String, count: Int)) async {
+        busy = true
+        defer { busy = false }
+        do {
+            let n = try await MashanglingAPI.shared.address.deleteShowcaseShares(showcaseId: t.showcaseId)
+            ToastCenter.shared.success("已删除该橱窗下 \(n) 条寄件记录")
+            showcaseDeleteTarget = nil
+            await load()
         } catch { ToastCenter.shared.error(error.localizedDescription) }
     }
 

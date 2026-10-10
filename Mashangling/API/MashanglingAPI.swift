@@ -1248,11 +1248,19 @@ actor MashanglingAPI {
             ])
         }
 
-        /// 导出菜鸟批量寄件模板
-        func exportCainiao(showcaseId: Int = 0, userId: Int = 0, status: String = "todo") async throws -> ExportResult {
-            try await client.post("address.exportCainiao", input: [
-                "showcaseId": showcaseId, "userId": userId, "status": status,
+        /// 导出菜鸟批量寄件模板（2026-10-10：shareIds 非空时进入多选模式，忽略筛选直接导出勾选记录）
+        func exportCainiao(showcaseId: Int = 0, userId: Int = 0, status: String = "todo", shareIds: [Int]? = nil) async throws -> ExportResult {
+            var input: [String: Any] = ["showcaseId": showcaseId, "userId": userId, "status": status]
+            if let ids = shareIds, !ids.isEmpty { input["shareIds"] = ids }
+            return try await client.post("address.exportCainiao", input: input)
+        }
+
+        /// 彻底删除橱窗下所有寄件记录（2026-10-10，不删橱窗本身，不可恢复；返回删除条数）
+        func deleteShowcaseShares(showcaseId: Int) async throws -> Int {
+            let r: DeleteSharesResult = try await client.post("address.deleteShowcaseShares", input: [
+                "showcaseId": showcaseId,
             ])
+            return r.deleted ?? 0
         }
     }
 

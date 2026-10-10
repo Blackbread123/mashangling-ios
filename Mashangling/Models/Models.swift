@@ -1589,6 +1589,12 @@ struct ExportResult: Codable {
     let count: Int?
 }
 
+/// 删除橱窗所有寄件记录结果（2026-10-10 address.deleteShowcaseShares）
+struct DeleteSharesResult: Codable {
+    let ok: Bool?
+    let deleted: Int?
+}
+
 /// 删除寄件记录结果
 struct DeleteShareResult: Codable {
     let ok: Bool?
