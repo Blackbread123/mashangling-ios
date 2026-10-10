@@ -7,6 +7,7 @@ import UserNotifications
 // 消息带红色未读角标；消息/我的需登录。不用系统 TabView（新版 iOS 会渲染成悬浮胶囊）。
 struct MainTabView: View {
     @StateObject private var unreadManager = UnreadManager.shared
+    @StateObject private var tabBarVis = TabBarVisibility.shared
     @EnvironmentObject var authManager: AuthManager
     @State private var tab = 0
     @State private var showLogin = false
@@ -36,11 +37,12 @@ struct MainTabView: View {
                         .opacity(tab == 4 ? 1 : 0).allowsHitTesting(tab == 4)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(.bottom, barHeight)
+                .padding(.bottom, tabBarVis.hidden ? 0 : barHeight)
                 .ignoresSafeArea(edges: .bottom)
 
-                // 底栏（视觉总高对齐 PWA：56 + 安全区一半，不多不少）
-                VStack(spacing: 0) {
+                // 底栏（视觉总高对齐 PWA：56 + 安全区一半，不多不少）；私信会话等全屏页可整体隐藏
+                if !tabBarVis.hidden {
+                    VStack(spacing: 0) {
                     Rectangle()
                         .fill(Color.appBorder.opacity(0.6))
                         .frame(height: 0.5)
@@ -62,6 +64,7 @@ struct MainTabView: View {
                     }
                 )
                 .ignoresSafeArea(edges: .bottom) // 底栏延伸进 Home 指示条区，底部留白由 bottomPad 承担
+                }
 
                 // 新功能悬浮提示卡（网页 PostFeatureTip：bottom-16 right-4 w-64，消息页不显示）
                 HStack {
@@ -72,7 +75,7 @@ struct MainTabView: View {
                         NotificationCenter.default.post(name: .mslShowPosts, object: nil)
                     }
                     .padding(.trailing, 16)
-                    .padding(.bottom, barHeight + 8)
+                    .padding(.bottom, (tabBarVis.hidden ? 0 : barHeight) + 8)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
 
@@ -188,6 +191,13 @@ struct MainTabView: View {
         }
         .buttonStyle(.plain)
     }
+}
+
+// MARK: - 底栏可见性（私信会话等全屏页进入时隐藏自定义底栏，退出恢复）
+@MainActor
+class TabBarVisibility: ObservableObject {
+    static let shared = TabBarVisibility()
+    @Published var hidden = false
 }
 
 // MARK: - 未读消息轮询

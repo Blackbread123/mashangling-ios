@@ -116,8 +116,13 @@ struct DmThreadView: View {
         .background(Color.appBackground)
         .navigationTitle(thread?.peer.name ?? peerName)
         .navigationBarTitleDisplayMode(.inline)
-        // 会话页隐藏底部 Tab：输入框获得完整底部空间，不再与导航条挤在一起
-        .toolbar(.hidden, for: .tabBar)
+        // 会话页隐藏自定义底栏：输入框获得完整底部空间，不再被底栏盖住
+        .onAppear { TabBarVisibility.shared.hidden = true }
+        .onDisappear {
+            TabBarVisibility.shared.hidden = false
+            timer?.invalidate()
+            timer = nil
+        }
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 NavigationLink(destination: ProfileView(userId: peerId)) {
@@ -132,10 +137,6 @@ struct DmThreadView: View {
             timer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { _ in
                 Task { await load(silent: true) }
             }
-        }
-        .onDisappear {
-            timer?.invalidate()
-            timer = nil
         }
     }
 
