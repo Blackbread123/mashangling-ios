@@ -511,9 +511,9 @@ struct ShowcaseDetailView: View {
         let names = pity.names
         var t = "保底机制：" + (names.count > 1 ? "最低概率款" : "「\(names.first ?? "")」") + "每 \(pity.base) 次内必中一次"
         if names.count > 1 {
-            t += "（共 \(names.count) 款并列最低，依次顺延：第 "
-                + names.enumerated().map { "\(pity.base + $0.offset)" }.joined(separator: "、")
-                + " 抽分别必中" + names.map { "「\($0)」" }.joined(separator: "、") + "）"
+            let seqs = names.enumerated().map { "\(pity.base + $0.offset)" }.joined(separator: "、")
+            let wrapped = names.map { "「\($0)」" }.joined(separator: "、")
+            t += "（共 \(names.count) 款并列最低，依次顺延：第 \(seqs) 抽分别必中\(wrapped)）"
             t += "；全部集齐后计数清零，开启新一轮保底"
         }
         let count = pity.count ?? 0
