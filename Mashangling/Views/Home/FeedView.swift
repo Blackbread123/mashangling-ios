@@ -13,6 +13,7 @@ struct FeedView: View {
     @StateObject private var vm = FeedViewModel()
     @State private var showLogin = false
     @State private var openDetailId: Int? = nil
+    @State private var showMysteryStats = false
 
     private let columns = [
         GridItem(.flexible(), spacing: 20),
@@ -71,10 +72,14 @@ struct FeedView: View {
                 ShowcaseDetailView(showcaseId: id)
             }
         }
+        .navigationDestination(isPresented: $showMysteryStats) {
+            MysteryStatsView()
+        }
     }
 
     // MARK: 排序栏（逐行复刻网页 Feed.tsx：排序/平台为整体胶囊容器，时间窗为独立小 pill）
     private var sortBar: some View {
+        VStack(alignment: .leading, spacing: 12) {
         FlowLayout(spacing: 12) {
             // 排序：整体胶囊容器
             HStack(spacing: 4) {
@@ -127,10 +132,37 @@ struct FeedView: View {
                                  title: "站内码与外部无料一起看")
                     platformPill(key: "external", label: "外部无料", icon: "cube.box",
                                  title: "只看需要寄快递的外部无料")
+                    platformPill(key: "mystery", label: "盲盒", icon: "dice",
+                                 title: "只看盲盒橱窗：抽到什么全看概率")
                 }
                 .padding(4)
                 .background(Color.appSecondary)
                 .cornerRadius(24)
+            }
+        }
+
+            // 盲盒分类：实际概率公示入口（点击跳转公示页，网页为 flex 容器内 w-full 独占一行）
+            if showPlatformToggle && vm.platform == "mystery" {
+                Button { showMysteryStats = true } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "chart.bar").font(.system(size: 12))
+                        Text("盲盒概率公示：每个奖项的设定概率与全站实际抽中占比公开可查")
+                            .font(.system(size: 12))
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                        Spacer(minLength: 4)
+                        Text("查看 →")
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                    .foregroundColor(Color(red: 0.43, green: 0.27, blue: 0.78))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(red: 0.43, green: 0.27, blue: 0.78).opacity(0.08))
+                    .cornerRadius(12)
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(red: 0.66, green: 0.55, blue: 0.94), lineWidth: 0.5))
+                }
+                .buttonStyle(.plain)
             }
         }
         .padding(.bottom, 8)
@@ -162,6 +194,8 @@ struct FeedView: View {
 
     private func platformPill(key: String, label: String, icon: String, title: String) -> some View {
         let selected = vm.platform == key
+        // 网页：盲盒选中态文字为紫色
+        let selectedColor: Color = key == "mystery" ? Color(red: 0.43, green: 0.27, blue: 0.78) : .appForeground
         return Button {
             vm.platform = key
             Task { await vm.reload() }
@@ -170,7 +204,7 @@ struct FeedView: View {
                 Image(systemName: icon).font(.system(size: 12))
                 Text(label).font(.system(size: 14, weight: selected ? .semibold : .regular))
             }
-            .foregroundColor(selected ? .appForeground : .appMutedFg)
+            .foregroundColor(selected ? selectedColor : .appMutedFg)
             .padding(.horizontal, 16).padding(.vertical, 6)
             .background(selected ? Color.appCard : Color.clear)
             .cornerRadius(20)
@@ -181,7 +215,9 @@ struct FeedView: View {
 
     private var emptyState: some View {
         let text: String
-        if vm.platform == "external" {
+        if vm.platform == "mystery" {
+            text = "这里还没有盲盒橱窗，看看「全部」，或发布第一个按概率抽码的盲盒"
+        } else if vm.platform == "external" {
             text = "这里还没有外部无料，看看「全部」，或发布第一个需要寄快递的无料"
         } else if vm.sort == "foryou" {
             text = "还没有足够的浏览记录，先去逛逛感兴趣的橱窗，再来这里看为你推荐的内容"
@@ -238,7 +274,7 @@ class FeedViewModel: ObservableObject {
             let r = try await MashanglingAPI.shared.showcase.feed(
                 sort: sort, window: window, tagId: tagId,
                 includeTagIds: includeTagIds, excludeTagIds: excludeTagIds,
-                q: search, platform: platform == "external" ? "external" : nil,
+                q: search, platform: platform == "all" ? nil : platform,
                 shuffle: sort == "foryou" ? shuffle : nil,
                 cursor: 0, limit: 24
             )
@@ -257,7 +293,7 @@ class FeedViewModel: ObservableObject {
             let r = try await MashanglingAPI.shared.showcase.feed(
                 sort: sort, window: window, tagId: tagId,
                 includeTagIds: includeTagIds, excludeTagIds: excludeTagIds,
-                q: search, platform: platform == "external" ? "external" : nil,
+                q: search, platform: platform == "all" ? nil : platform,
                 shuffle: sort == "foryou" ? shuffle : nil,
                 cursor: cursor, limit: 24
             )
@@ -283,7 +319,8 @@ class FeedViewModel: ObservableObject {
                     likeCount: (old.likeCount ?? 0) + (liked ? 1 : -1),
                     claimCount: old.claimCount, codeCount: old.codeCount,
                     likedByMe: liked, claimedByMe: old.claimedByMe,
-                    addressSentByMe: old.addressSentByMe, addressCount: old.addressCount
+                    addressSentByMe: old.addressSentByMe, addressCount: old.addressCount,
+                    isMystery: old.isMystery
                 )
                 items = copy
             }

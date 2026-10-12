@@ -38,6 +38,7 @@ struct ShowcaseDetailView: View {
     @State private var showDmAuthor = false
     @State private var copiedMain = false
     @State private var copiedCodeId: Int? = nil
+    @State private var mysteryCopied: String? = nil
     @State private var repostViewer: ViewerItem? = nil
     @State private var repostDelete: RepostRow? = nil
     @State private var repostReport: IntItem? = nil
@@ -148,6 +149,7 @@ struct ShowcaseDetailView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.top, 16)
                     }
+                    mysterySection(d)
                     mainCodeSection(d)
                     actionsRow(d)
                 }
@@ -251,6 +253,286 @@ struct ShowcaseDetailView: View {
             }
             .padding(.top, 12)
         }
+    }
+
+    // MARK: 盲盒区（对应网页 ShowcaseDetail.tsx 盲盒块：标题 + 保底 + 概率表 + 抽取 + 我的码 + 发布者码）
+    @ViewBuilder
+    private func mysterySection(_ d: ShowcaseDetailData) -> some View {
+        if d.isMystery == true {
+            VStack(alignment: .leading, spacing: 0) {
+                // 标题行
+                HStack(spacing: 6) {
+                    Image(systemName: "dice")
+                        .font(.system(size: 14))
+                        .foregroundColor(Self.violet600)
+                    Text("盲盒橱窗")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(Self.violet700)
+                    Spacer(minLength: 0)
+                    if let q = d.quantity {
+                        Text("剩 \(d.remaining ?? 0)/\(q)")
+                            .font(.system(size: 11))
+                            .foregroundColor(.appMutedFg)
+                            .padding(.horizontal, 8).padding(.vertical, 2)
+                            .background(Color.appSecondary)
+                            .clipShape(Capsule())
+                            .fixedSize()
+                    }
+                }
+
+                // 保底机制（仅最低概率款）
+                if let pity = d.mysteryPity {
+                    HStack(alignment: .top, spacing: 6) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 12))
+                            .foregroundColor(.fixAmber500)
+                            .padding(.top, 1)
+                        Text(pityText(pity, d: d))
+                            .font(.system(size: 11))
+                            .lineSpacing(3)
+                            .foregroundColor(.fixAmber700)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(hex: "#fffbeb").opacity(0.7))
+                    .cornerRadius(8)
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(hex: "#fcd34d"), lineWidth: 1))
+                    .padding(.top, 12)
+                }
+
+                // 概率表（任何人都可见，不含码，按概率从低到高）
+                if let table = d.mysteryTable, !table.isEmpty {
+                    VStack(spacing: 0) {
+                        ForEach(Array(table.enumerated()), id: \.offset) { i, m in
+                            HStack {
+                                Text(m.name)
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundColor(.appForeground.opacity(0.9))
+                                    .lineLimit(1)
+                                Spacer(minLength: 12)
+                                Text("\(fmtPercent(m.percent))%")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .monospacedDigit()
+                                    .foregroundColor(Self.violet600)
+                            }
+                            .padding(.horizontal, 12).padding(.vertical, 8)
+                            .background(i % 2 == 0 ? Color.white.opacity(0.6) : Self.violet50.opacity(0.6))
+                        }
+                    }
+                    .cornerRadius(8)
+                    .overlay(RoundedRectangle(cornerRadius: 8).stroke(Self.violet200, lineWidth: 1))
+                    .padding(.top, 12)
+                }
+                Text("领取后按上方概率随机获得其中一款的码（按概率从低到高排列）。")
+                    .font(.system(size: 11)).lineSpacing(3)
+                    .foregroundColor(.appMutedFg)
+                    .padding(.top, 8)
+
+                // 发布者：全量名称+码（仅你可见）
+                if d.isMine == true, let items = d.ownerMysteryItems {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("你配置的各款码（仅你可见）：")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.appMutedFg)
+                        ForEach(Array(items.enumerated()), id: \.offset) { _, m in
+                            HStack(spacing: 8) {
+                                Text(m.name)
+                                    .font(.system(size: 12, weight: .medium))
+                                    .lineLimit(1)
+                                Spacer(minLength: 8)
+                                Text(m.code)
+                                    .font(.system(size: 12, design: .monospaced))
+                                    .foregroundColor(.appForeground.opacity(0.8))
+                            }
+                            .padding(.horizontal, 10).padding(.vertical, 6)
+                            .background(Color.white.opacity(0.7))
+                            .cornerRadius(6)
+                        }
+                    }
+                    .padding(.top, 12)
+                    .overlay(alignment: .top) {
+                        Rectangle().fill(Self.violet200).frame(height: 1).offset(y: -12)
+                    }
+                    .padding(.top, 12)
+                }
+
+                // 抽取入口（即时/积分模式；已抽过显示「再抽一次」）
+                if d.isMine != true && d.expired != true && (d.claimMode == "instant" || d.claimMode == "points") {
+                    if d.isFullyClaimed == true {
+                        disabledPill(icon: "xmark.circle", label: "已领完")
+                            .padding(.top, 12)
+                    } else {
+                        VStack(alignment: .leading, spacing: 0) {
+                            HStack(spacing: 8) {
+                                Button {
+                                    guard authManager.isAuthenticated else { showLogin = true; return }
+                                    Task { await mysteryDraw(d, count: 1) }
+                                } label: {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "dice").font(.system(size: 13))
+                                        Text(busy ? "抽取中…" : ((d.myMysteryDraws?.isEmpty == false) ? "再抽一次" : "抽一次"))
+                                            .font(.system(size: 14, weight: .semibold))
+                                    }
+                                    .foregroundColor(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
+                                    .background(Self.violet500)
+                                    .clipShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(busy)
+
+                                mysteryCountButton(d, count: 5, label: "抽五次")
+                                mysteryCountButton(d, count: 10, label: "抽十次")
+                            }
+                            Text("每次抽取独立按概率获得一款的码（结果可重复），抽到的码都列在上方"
+                                 + (d.claimMode == "points" ? "；\(d.pointCost ?? 0) 积分/次" : "") + "。")
+                                .font(.system(size: 11)).lineSpacing(3)
+                                .foregroundColor(.appMutedFg)
+                                .padding(.top, 8)
+                        }
+                        .padding(.top, 12)
+                    }
+                }
+
+                // 我抽到的全部码（最新在最上；抽中最低概率款金色高亮）
+                if d.isMine != true, let draws = d.myMysteryDraws, !draws.isEmpty {
+                    let minPercent = d.mysteryTable?.map { $0.percent }.min() ?? .infinity
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("我抽到的码（共 \(draws.count) 次）：")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.appMutedFg)
+                        ForEach(Array(draws.enumerated()), id: \.offset) { i, m in
+                            let isRare = m.percent == minPercent
+                            VStack(alignment: .leading, spacing: 0) {
+                                HStack(spacing: 8) {
+                                    Text(m.name)
+                                        .font(.system(size: 14, weight: isRare ? .bold : .semibold))
+                                        .foregroundColor(isRare ? .fixAmber700 : Self.violet700)
+                                    if isRare {
+                                        HStack(spacing: 2) {
+                                            Image(systemName: "sparkles").font(.system(size: 8))
+                                            Text("隐藏款").font(.system(size: 10, weight: .bold))
+                                        }
+                                        .foregroundColor(.white)
+                                        .padding(.horizontal, 6).padding(.vertical, 2)
+                                        .background(LinearGradient(colors: [Color(hex: "#f59e0b"), Color(hex: "#ca8a04")], startPoint: .leading, endPoint: .trailing))
+                                        .clipShape(Capsule())
+                                    }
+                                    if i == 0 {
+                                        Text("最新")
+                                            .font(.system(size: 10, weight: .bold))
+                                            .foregroundColor(.white)
+                                            .padding(.horizontal, 6).padding(.vertical, 2)
+                                            .background(Self.violet500)
+                                            .clipShape(Capsule())
+                                    }
+                                }
+                                HStack(alignment: .center, spacing: 12) {
+                                    Text(m.code)
+                                        .font(.system(size: 16, weight: isRare ? .bold : .semibold, design: .monospaced))
+                                        .tracking(1)
+                                        .foregroundColor(isRare ? .fixAmber700 : .appForeground)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                    Button {
+                                        UIPasteboard.general.string = m.code
+                                        mysteryCopied = m.code
+                                        ToastCenter.shared.success("盲盒码已复制")
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                            if mysteryCopied == m.code { mysteryCopied = nil }
+                                        }
+                                    } label: {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: mysteryCopied == m.code ? "checkmark" : "doc.on.doc")
+                                                .font(.system(size: 13))
+                                            Text(mysteryCopied == m.code ? "已复制" : "复制")
+                                                .font(.system(size: 13, weight: isRare ? .semibold : .regular))
+                                        }
+                                        .foregroundColor(isRare ? Color(hex: "#d97706") : .appPrimaryFg)
+                                        .padding(.horizontal, 14).padding(.vertical, 7)
+                                        .background(isRare ? Color.white.opacity(0.7) : Color.appPrimary)
+                                        .clipShape(Capsule())
+                                        .overlay(Capsule().stroke(Color.fixAmber500, lineWidth: isRare ? 1 : 0))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                .padding(.top, 8)
+                            }
+                            .padding(12)
+                            .background(isRare
+                                        ? AnyView(LinearGradient(colors: [Color(hex: "#fffbeb"), Color(hex: "#fefce8")], startPoint: .leading, endPoint: .trailing))
+                                        : AnyView(Color.white.opacity(0.7)))
+                            .cornerRadius(8)
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(isRare ? Color(hex: "#fbbf24") : Self.violet300, lineWidth: 1))
+                            .shadow(color: isRare ? Color(hex: "#fbbf24").opacity(0.25) : .clear, radius: 6)
+                        }
+                    }
+                    .padding(.top, 12)
+                }
+            }
+            .padding(16)
+            .background(Self.violet50.opacity(0.5))
+            .cornerRadius(5)
+            .overlay(RoundedRectangle(cornerRadius: 5).stroke(Self.violet300, lineWidth: 1))
+            .padding(.top, 24)
+        }
+    }
+
+    // 盲盒配色（对齐网页 tailwind violet 系）
+    private static let violet50 = Color(hex: "#f5f3ff")
+    private static let violet200 = Color(hex: "#ddd6fe")
+    private static let violet300 = Color(hex: "#c4b5fd")
+    private static let violet500 = Color(hex: "#8b5cf6")
+    private static let violet600 = Color(hex: "#7c3aed")
+    private static let violet700 = Color(hex: "#6d28d9")
+
+    private func mysteryCountButton(_ d: ShowcaseDetailData, count: Int, label: String) -> some View {
+        Button {
+            guard authManager.isAuthenticated else { showLogin = true; return }
+            Task { await mysteryDraw(d, count: count) }
+        } label: {
+            Text(label)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(Self.violet600)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .overlay(Capsule().stroke(Self.violet400, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .disabled(busy)
+    }
+
+    private static let violet400 = Color(hex: "#a78bfa")
+
+    // 保底文案（与网页逐字一致）
+    private func pityText(_ pity: ShowcaseDetailData.MysteryPity, d: ShowcaseDetailData) -> String {
+        let names = pity.names
+        var t = "保底机制：" + (names.count > 1 ? "最低概率款" : "「\(names.first ?? "")」") + "每 \(pity.base) 次内必中一次"
+        if names.count > 1 {
+            t += "（共 \(names.count) 款并列最低，依次顺延：第 "
+                + names.enumerated().map { "\(pity.base + $0.offset)" }.joined(separator: "、")
+                + " 抽分别必中" + names.map { "「\($0)」" }.joined(separator: "、") + "）"
+            t += "；全部集齐后计数清零，开启新一轮保底"
+        }
+        let count = pity.count ?? 0
+        let roundDone = pity.roundDone ?? 0
+        let roundTotal = pity.roundTotal ?? 1
+        let remaining = pity.remaining ?? 0
+        if authManager.isAuthenticated && d.isMine != true && count > 0 {
+            t += "。本轮你已抽 \(count) 次" + (roundDone > 0 ? "、已中 \(roundDone)/\(roundTotal) 款" : "") + "，还差 \(remaining) 次触发保底"
+        } else if authManager.isAuthenticated && d.isMine != true && count == 0 && roundDone > 0 {
+            t += "。新一轮进行中：已中 \(roundDone)/\(roundTotal) 款，还差 \(remaining) 次触发保底"
+        }
+        return t
+    }
+
+    // 概率格式化：parseFloat(percent.toFixed(2))
+    private func fmtPercent(_ p: Double) -> String {
+        let r = (p * 100).rounded() / 100
+        if r == r.rounded() { return String(Int(r)) }
+        return String(format: "%g", r)
     }
 
     // MARK: 码区（四种形态，分支条件与网页一致）
@@ -602,8 +884,11 @@ struct ShowcaseDetailView: View {
         if st == "approved" {
             VStack(alignment: .leading, spacing: 0) {
                 limitedNotice().padding(.bottom, 12)
-                disabledPill(icon: "checkmark", label: "已领取 ✓")
-                dmNote("该无料没有平台码，发布人会与你联系发放；也可以主动", d)
+                // 盲盒：抽取按钮在上方盲盒区，此处不重复；也不显示「没有平台码」提示
+                if d.isMystery != true {
+                    disabledPill(icon: "checkmark", label: "已领取 ✓")
+                    dmNote("该无料没有平台码，发布人会与你联系发放；也可以主动", d)
+                }
                 addressBlock(d)
             }
         } else if d.isFullyClaimed == true {
@@ -616,26 +901,39 @@ struct ShowcaseDetailView: View {
             }
         } else if d.claimMode == "points" {
             VStack(alignment: .leading, spacing: 0) {
-                fullPill(icon: "centsign.circle", label: busy ? "解锁中…" : "支付 \(d.pointCost ?? 0) 积分解锁",
-                         bg: .fixAmber500, fg: .white, enabled: !busy) {
-                    guard authManager.isAuthenticated else { showLogin = true; return }
-                    Task { await unlockClaim() }
+                // 盲盒：抽取按钮在上方盲盒区，此处不重复
+                if d.isMystery != true {
+                    fullPill(icon: "centsign.circle", label: busy ? "解锁中…" : "支付 \(d.pointCost ?? 0) 积分解锁",
+                             bg: .fixAmber500, fg: .white, enabled: !busy) {
+                        guard authManager.isAuthenticated else { showLogin = true; return }
+                        Task { await unlockClaim() }
+                    }
                 }
-                Text("解锁后积分转给发布者，无需审批"
-                     + (d.quantity != nil ? "，限量 \(d.quantity ?? 0) 份领完即止" : "")
-                     + (d.platform == "external" ? "；解锁后即可一键发送地址" : "，分享码立即露出") + "。")
+                Text(d.isMystery == true
+                     ? "每次支付 \(d.pointCost ?? 0) 积分抽取一次，按概率获得一款的码（结果可重复，可多次抽取），积分转给发布者"
+                       + (d.quantity != nil ? "，限量 \(d.quantity ?? 0) 份领完即止" : "")
+                       + (d.platform == "external" ? "；解锁后即可一键发送地址" : "。")
+                     : "解锁后积分转给发布者，无需审批"
+                       + (d.quantity != nil ? "，限量 \(d.quantity ?? 0) 份领完即止" : "")
+                       + (d.platform == "external" ? "；解锁后即可一键发送地址" : "，分享码立即露出") + "。")
                     .font(.system(size: 11)).lineSpacing(5).foregroundColor(.appMutedFg)
                     .padding(.top, 8)
             }
         } else if d.claimMode == "instant" {
             VStack(alignment: .leading, spacing: 0) {
-                fullPill(icon: "shippingbox", label: busy ? "领取中…" : "领取",
-                         bg: .appPrimary, fg: .appPrimaryFg, enabled: !busy) {
-                    guard authManager.isAuthenticated else { showLogin = true; return }
-                    Task { await unlockClaim() }
+                // 盲盒：抽取按钮在上方盲盒区，此处不重复
+                if d.isMystery != true {
+                    fullPill(icon: "shippingbox", label: busy ? "领取中…" : "领取",
+                             bg: .appPrimary, fg: .appPrimaryFg, enabled: !busy) {
+                        guard authManager.isAuthenticated else { showLogin = true; return }
+                        Task { await unlockClaim() }
+                    }
                 }
-                Text("无需审批：点击「领取」分享码立即解锁，每人限领一次"
-                     + (d.quantity != nil ? "，限量 \(d.quantity ?? 0) 份领完即止" : "") + "。")
+                Text(d.isMystery == true
+                     ? "无需审批：点击即按概率随机获得一款的码，可重复抽取（结果可重复）"
+                       + (d.quantity != nil ? "，限量 \(d.quantity ?? 0) 份领完即止" : "") + "。"
+                     : "无需审批：点击「领取」分享码立即解锁，每人限领一次"
+                       + (d.quantity != nil ? "，限量 \(d.quantity ?? 0) 份领完即止" : "") + "。")
                     .font(.system(size: 11)).lineSpacing(5).foregroundColor(.appMutedFg)
                     .padding(.top, 8)
             }
@@ -1117,11 +1415,31 @@ struct ShowcaseDetailView: View {
                             VStack(spacing: 8) {
                                 ForEach(items) { it in
                                     HStack(spacing: 8) {
-                                        Text(it.full ?? "\(it.nickname) \(it.phone) \(it.address)")
-                                            .font(.system(size: 12))
-                                            .lineSpacing(6)
-                                            .foregroundColor(.appForeground)
-                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                        VStack(alignment: .leading, spacing: 0) {
+                                            Text(it.full ?? "\(it.nickname) \(it.phone) \(it.address)")
+                                                .font(.system(size: 12))
+                                                .lineSpacing(6)
+                                                .foregroundColor(.appForeground)
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                            // 盲盒：显示抽中的全部品类，发货对照
+                                            if let draws = it.mysteryDraws, !draws.isEmpty {
+                                                FlowLayout(spacing: 4, vSpacing: 4) {
+                                                    Image(systemName: "dice")
+                                                        .font(.system(size: 10))
+                                                        .foregroundColor(Color(hex: "#8b5cf6"))
+                                                    ForEach(Array(draws.enumerated()), id: \.offset) { _, m in
+                                                        Text(m.name)
+                                                            .font(.system(size: 11, weight: .semibold))
+                                                            .foregroundColor(Color(hex: "#6d28d9"))
+                                                            .padding(.horizontal, 8).padding(.vertical, 2)
+                                                            .background(Color(hex: "#ede9fe"))
+                                                            .clipShape(Capsule())
+                                                            .overlay(Capsule().stroke(Color(hex: "#c4b5fd"), lineWidth: 0.5))
+                                                    }
+                                                }
+                                                .padding(.top, 4)
+                                            }
+                                        }
                                         Button {
                                             UIPasteboard.general.string = it.full ?? "\(it.nickname) \(it.phone) \(it.address)"
                                             ToastCenter.shared.success("地址已复制")
@@ -1399,10 +1717,18 @@ struct ShowcaseDetailView: View {
     private func exportAddressCSV() {
         guard let items = addresses?.items, !items.isEmpty else { return }
         let title = addresses?.showcaseTitle ?? "橱窗"
+        // 盲盒橱窗多一列「抽中品类」，方便按表备货
+        let mystery = addresses?.isMystery == true
         let esc: (String) -> String = { "\"" + $0.replacingOccurrences(of: "\"", with: "\"\"") + "\"" }
-        var lines = ["\"橱窗名\",\"地址\""]
+        var lines = [mystery ? "\"橱窗名\",\"地址\",\"抽中品类\"" : "\"橱窗名\",\"地址\""]
         for i in items {
-            lines.append("\(esc(title)),\(esc(i.full ?? "\(i.nickname) \(i.phone) \(i.address)"))")
+            let addr = esc(i.full ?? "\(i.nickname) \(i.phone) \(i.address)")
+            if mystery {
+                let draws = (i.mysteryDraws ?? []).map { $0.name }.joined(separator: "、")
+                lines.append("\(esc(title)),\(addr),\(esc(draws))")
+            } else {
+                lines.append("\(esc(title)),\(addr)")
+            }
         }
         let csv = "\u{FEFF}" + lines.joined(separator: "\r\n")
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(title)-收货地址.csv")
@@ -1464,6 +1790,31 @@ struct ShowcaseDetailView: View {
         do {
             _ = try await MashanglingAPI.shared.claim.create(showcaseId: showcaseId)
             ToastCenter.shared.success(isPoints ? "解锁成功，积分已转给发布者" : "领取成功，分享码已解锁")
+            await load()
+        } catch {
+            let msg = error.localizedDescription
+            if msg.contains("积分不足") {
+                ToastCenter.shared.error("\(msg)。获取积分的方式：每日签到与任务、发布橱窗或卡片、收到点赞/返图/「领到了」、分享橱窗、集满浏览量等。")
+            } else {
+                ToastCenter.shared.error(msg)
+            }
+        }
+    }
+
+    // 盲盒抽取（claim.create 带 count；结果以重新加载后的 myMysteryDraws 为准）
+    private func mysteryDraw(_ d: ShowcaseDetailData, count: Int) async {
+        let isPoints = d.claimMode == "points"
+        busy = true
+        defer { busy = false }
+        do {
+            _ = try await MashanglingAPI.shared.claim.create(showcaseId: showcaseId, count: count)
+            let msg: String
+            if isPoints {
+                msg = count > 1 ? "连抽 \(count) 次完成，积分已转给发布者" : "解锁成功，积分已转给发布者"
+            } else {
+                msg = count > 1 ? "连抽 \(count) 次完成，结果已加入上方盲盒区" : "抽取成功，结果已加入上方盲盒区"
+            }
+            ToastCenter.shared.success(msg)
             await load()
         } catch {
             let msg = error.localizedDescription

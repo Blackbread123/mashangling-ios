@@ -120,16 +120,29 @@ struct ShowcaseCardView: View {
                                 stockBadge
                             }
                             Spacer()
-                            // 右下：积分解锁
-                            if let pc = item.pointCost, pc > 0 {
-                                HStack(spacing: 2) {
-                                    Image(systemName: "dollarsign.circle.fill").font(.system(size: 9))
-                                    Text("\(pc)").font(.system(size: 11, weight: .bold))
+                            // 右下：盲盒胶囊（有积分标时上移避让）+ 积分解锁
+                            VStack(alignment: .trailing, spacing: 4) {
+                                if item.isMystery == true {
+                                    HStack(spacing: 2) {
+                                        Image(systemName: "dice").font(.system(size: 9))
+                                        Text("盲盒").font(.system(size: 11, weight: .bold))
+                                    }
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 8).padding(.vertical, 2)
+                                    .background(Color(red: 0.66, green: 0.33, blue: 0.94).opacity(0.9))
+                                    .cornerRadius(10)
+                                    .overlay(Capsule().stroke(Color.white.opacity(0.5), lineWidth: 0.5))
                                 }
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 8).padding(.vertical, 2)
-                                .background(Color(h: 40, s: 15, l: 64))
-                                .cornerRadius(10)
+                                if let pc = item.pointCost, pc > 0 {
+                                    HStack(spacing: 2) {
+                                        Image(systemName: "dollarsign.circle.fill").font(.system(size: 9))
+                                        Text("\(pc)").font(.system(size: 11, weight: .bold))
+                                    }
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 8).padding(.vertical, 2)
+                                    .background(Color(h: 40, s: 15, l: 64))
+                                    .cornerRadius(10)
+                                }
                             }
                         }
                     }

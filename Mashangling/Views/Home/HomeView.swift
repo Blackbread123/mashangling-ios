@@ -9,10 +9,14 @@ struct HomeView: View {
     @State private var searchInput = ""
     @State private var pushSearch = false
     @State private var showAvatarMenu = false
+    // 盲盒分类上线悬浮提示（网页 MysteryTabTip：对所有用户显示一次，含游客）
+    @State private var mysteryTipDismissed = UserDefaults.standard.bool(forKey: "msl-mystery-tab-tip-dismissed")
+    @State private var mysteryTipSessionClosed = false
 
     var body: some View {
         NavigationStack {
             ZStack(alignment: .topTrailing) {
+                ScrollViewReader { scrollProxy in
                 VStack(spacing: 0) {
                     // 自定义顶栏（网页 Header.tsx 移动端：h-16 px-3，logo+裸搜索图标+头像，无胶囊无分界线）
                     HStack(spacing: 8) {
@@ -109,6 +113,7 @@ struct HomeView: View {
                             // 信息流
                             FeedView(showPlatformToggle: true)
                                 .padding(.top, 8)
+                                .id("feedAnchor")
                             // 页脚
                             FooterView()
                         }
@@ -119,6 +124,29 @@ struct HomeView: View {
                     .refreshable { await vm.refresh(authed: authManager.isAuthenticated) }
                 }
                 .background(Color.appBackground)
+
+                // 盲盒分类上线悬浮提示（右下角，网页 fixed bottom-20 right-4 max-w-xs）
+                if !mysteryTipDismissed && !mysteryTipSessionClosed {
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Spacer()
+                            MysteryTabTipCard(
+                                onGo: { withAnimation { scrollProxy.scrollTo("feedAnchor", anchor: .top) } },
+                                onNever: {
+                                    UserDefaults.standard.set(true, forKey: "msl-mystery-tab-tip-dismissed")
+                                    withAnimation { mysteryTipDismissed = true }
+                                },
+                                onClose: { withAnimation { mysteryTipSessionClosed = true } }
+                            )
+                        }
+                    }
+                    .padding(.trailing, 16)
+                    .padding(.bottom, 80)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(1)
+                }
+                }
 
                 // 头像下拉菜单（网页 DropdownMenu）
                 if showAvatarMenu {
@@ -148,31 +176,55 @@ struct HomeView: View {
         pushSearch = true
     }
 
-    // 积分播报（网页 PointsTicker：amber 细条）
+    // 积分播报（网页 PointsTicker：amber 细条；盲盒隐藏款通报为金色渐变条）
     private var tickerBar: some View {
         let cur = vm.ticker[vm.tickerIdx % vm.ticker.count]
-        return HStack(spacing: 6) {
+        let name = String(cur.name.prefix(8))
+        if cur.isRareHit {
+            // 「xxx 抽中了隐藏款「无料名」」金色通报（只显示无料名，绝不显示码）
+            let item = cur.itemName ?? ""
+            return AnyView(HStack(spacing: 6) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 11))
+                    .foregroundColor(Color(hex: "#f59e0b"))
+                Text(name)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(Color(hex: "#92400e"))
+                    .lineLimit(1)
+                Text("抽中了隐藏款").font(.system(size: 12)).foregroundColor(Color(hex: "#92400e"))
+                Text("「\(String(item.prefix(10)))\(item.count > 10 ? "…" : "")」")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(Color(hex: "#b45309"))
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            .background(LinearGradient(colors: [Color(hex: "#fffbeb"), Color(hex: "#fefce8")], startPoint: .leading, endPoint: .trailing))
+            .cornerRadius(20)
+            .overlay(Capsule().stroke(Color(hex: "#fcd34d"), lineWidth: 0.5)))
+        }
+        return AnyView(HStack(spacing: 6) {
             Image(systemName: "megaphone")
                 .font(.system(size: 11))
                 .foregroundColor(.appAmberIcon)
-            Text(String(cur.name.prefix(8)))
+            Text(name)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundColor(.appAmberFg)
                 .lineLimit(1)
             Text("通过").font(.system(size: 12)).foregroundColor(.appAmberFg)
-            Text(String(cur.label.prefix(20)))
+            Text(String((cur.label ?? "").prefix(20)))
                 .font(.system(size: 12))
                 .foregroundColor(.appAmberFg)
                 .lineLimit(1)
             Text("获得 ").font(.system(size: 12)).foregroundColor(.appAmberFg)
-                + Text("+\(cur.delta)").font(.system(size: 12, weight: .bold)).foregroundColor(.appAmberFg)
+                + Text("+\(cur.delta ?? 0)").font(.system(size: 12, weight: .bold)).foregroundColor(.appAmberFg)
                 + Text(" 积分").font(.system(size: 12)).foregroundColor(.appAmberFg)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 12).padding(.vertical, 6)
         .background(Color.appAmberBg.opacity(0.8))
         .cornerRadius(20)
-        .overlay(Capsule().stroke(Color.appAmberBrd.opacity(0.7), lineWidth: 0.5))
+        .overlay(Capsule().stroke(Color.appAmberBrd.opacity(0.7), lineWidth: 0.5)))
     }
 
     // 小 Tip（网页：rounded-full border-emerald-200 bg-emerald-50/80 py-1.5 pl-2 pr-4）

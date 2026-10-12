@@ -88,17 +88,20 @@ actor MashanglingAPI {
         func create(title: String, platform: String, rouzaoCode: String, codeVisibility: String,
                     description: String, coverImage: String, tagIds: [Int], stockStatus: String,
                     quantity: Int?, claimMode: String, pointCost: Int?,
-                    addressDeadline: String?, expiresAt: String?, shippingFree: Bool) async throws -> Int {
+                    addressDeadline: String?, expiresAt: String?, shippingFree: Bool,
+                    isMystery: Bool = false, mysteryItems: [[String: Any]]? = nil) async throws -> Int {
             var input: [String: Any] = [
                 "title": title, "platform": platform, "rouzaoCode": rouzaoCode,
                 "codeVisibility": codeVisibility, "description": description,
                 "coverImage": coverImage, "tagIds": tagIds, "stockStatus": stockStatus,
                 "claimMode": claimMode, "shippingFree": shippingFree,
+                "isMystery": isMystery,
             ]
             input["quantity"] = quantity as Any? ?? NSNull()
             input["pointCost"] = pointCost as Any? ?? NSNull()
             input["addressDeadline"] = addressDeadline as Any? ?? NSNull()
             input["expiresAt"] = expiresAt as Any? ?? NSNull()
+            if let mysteryItems = mysteryItems { input["mysteryItems"] = mysteryItems }
             struct Created: Codable { let id: Int }
             let r: Created = try await client.post("showcase.create", input: input)
             return r.id
@@ -109,19 +112,30 @@ actor MashanglingAPI {
                     description: String, coverImage: String, tagIds: [Int], stockStatus: String,
                     quantity: Int?, claimMode: String, pointCost: Int?,
                     addressDeadline: String?, expiresAt: String?, shippingFree: Bool,
-                    pinned: Bool = false) async throws -> Bool {
+                    pinned: Bool = false,
+                    isMystery: Bool = false, mysteryItems: [[String: Any]]? = nil) async throws -> Bool {
             var input: [String: Any] = [
                 "id": id, "title": title, "platform": platform, "rouzaoCode": rouzaoCode,
                 "codeVisibility": codeVisibility, "description": description,
                 "coverImage": coverImage, "tagIds": tagIds, "stockStatus": stockStatus,
                 "claimMode": claimMode, "shippingFree": shippingFree, "pinned": pinned,
+                "isMystery": isMystery,
             ]
             input["quantity"] = quantity as Any? ?? NSNull()
             input["pointCost"] = pointCost as Any? ?? NSNull()
             input["addressDeadline"] = addressDeadline as Any? ?? NSNull()
             input["expiresAt"] = expiresAt as Any? ?? NSNull()
+            if let mysteryItems = mysteryItems { input["mysteryItems"] = mysteryItems }
             let r: OkResponse = try await client.post("showcase.update", input: input)
             return r.ok ?? false
+        }
+
+        /// 盲盒概率公示（公开）：按橱窗标题/无料名搜索，或 showcaseId 直达
+        func mysteryStats(q: String? = nil, showcaseId: Int? = nil) async throws -> MysteryStatsResponse {
+            var input: [String: Any] = [:]
+            if let q = q, !q.isEmpty { input["q"] = q }
+            if let showcaseId = showcaseId { input["showcaseId"] = showcaseId }
+            return try await client.get("showcase.mysteryStats", input: input.isEmpty ? nil : input)
         }
 
         /// 删除橱窗
@@ -334,9 +348,11 @@ actor MashanglingAPI {
         let client: APIClient
 
         /// 申请领取 / 凭证解锁 / 积分解锁 / 限量即领（统一入口）
-        func create(showcaseId: Int, note: String = "", credentialImage: String? = nil) async throws -> Bool {
+        /// count：连抽次数 1/5/10，仅即时/积分模式的盲盒生效，其余恒为 1
+        func create(showcaseId: Int, note: String = "", credentialImage: String? = nil, count: Int = 1) async throws -> Bool {
             var input: [String: Any] = ["showcaseId": showcaseId, "note": note]
             if let credentialImage = credentialImage { input["credentialImage"] = credentialImage }
+            if count > 1 { input["count"] = count }
             let r: OkResponse = try await client.post("claim.create", input: input)
             return r.ok ?? false
         }

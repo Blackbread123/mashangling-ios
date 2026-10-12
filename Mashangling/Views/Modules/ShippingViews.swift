@@ -914,14 +914,35 @@ struct ShippingView: View {
                     }
                     .buttonStyle(.plain)
                 }
-                Text(a.full ?? a.address)
-                    .font(.system(size: 12))
-                    .foregroundColor(.appForeground.opacity(0.9))
-                    .lineSpacing(8)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-                    .onTapGesture { if selectMode { toggleSelect(a.id) } }
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(a.full ?? a.address)
+                        .font(.system(size: 12))
+                        .foregroundColor(.appForeground.opacity(0.9))
+                        .lineSpacing(8)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                        .onTapGesture { if selectMode { toggleSelect(a.id) } }
+                    // 盲盒：显示该领取人抽中的全部品类，发货时对照备货
+                    if let draws = a.mysteryDraws, !draws.isEmpty {
+                        FlowLayout(spacing: 4, vSpacing: 4) {
+                            Image(systemName: "dice")
+                                .font(.system(size: 10))
+                                .foregroundColor(Color(hex: "#8b5cf6"))
+                            ForEach(Array(draws.enumerated()), id: \.offset) { _, m in
+                                Text(m.name)
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(Color(hex: "#6d28d9"))
+                                    .padding(.horizontal, 8).padding(.vertical, 2)
+                                    .background(Color(hex: "#ede9fe"))
+                                    .clipShape(Capsule())
+                                    .overlay(Capsule().stroke(Color(hex: "#c4b5fd"), lineWidth: 0.5))
+                            }
+                        }
+                        .padding(.top, 4)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 Button {
                     UIPasteboard.general.string = a.full ?? a.address
                     ToastCenter.shared.success("地址已复制")

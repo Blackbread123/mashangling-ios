@@ -31,6 +31,9 @@ struct PublishView: View {
     @State private var expiresDate = Date().addingTimeInterval(7 * 86400)
     @State private var shippingFree = false
     @State private var pinned = false
+    // 盲盒：开关 + 奖项列表（名称 + 码 + 概率百分数字符串）
+    @State private var isMystery = false
+    @State private var mysteryItems: [MysteryItemInput] = [MysteryItemInput(), MysteryItemInput()]
     @State private var busy = false
     @State private var publishedId: Int? = nil
 
@@ -161,7 +164,25 @@ struct PublishView: View {
                     }
                 }
 
-                // 无料码：外部无料可留空
+                // 盲盒开关：仅平台橱窗（柔造/映糖）
+                if platform != "external" {
+                    VStack(alignment: .leading, spacing: 6) {
+                        fieldLabel("盲盒橱窗")
+                        HStack(spacing: 6) {
+                            fullPillButton("普通橱窗", selected: !isMystery) { isMystery = false }
+                            fullPillButton("盲盒橱窗", selected: isMystery) { isMystery = true }
+                        }
+                        noteText("盲盒：配置多个无料（编号名称+各自的码）和抽中概率，访客领取后按概率随机获得其中一款的码；领取前只能看到各款名称和概率，看不到码。")
+                    }
+
+                    // 盲盒奖项配置
+                    if isMystery {
+                        mysteryEditor
+                    }
+                }
+
+                // 无料码：外部无料可留空；盲盒隐藏（码在各奖项里）
+                if !isMystery {
                 VStack(alignment: .leading, spacing: 6) {
                     fieldLabel("无料码" + (platform == "external" ? "（外部无料可留空）" : platform == "rouzao" ? "（柔造码）" : "（映糖码）"))
                     AppTextField(text: $rouzaoCode,
@@ -171,6 +192,7 @@ struct PublishView: View {
                     if platform != "external" {
                         noteText("留空则会按「外部无料」发布。")
                     }
+                }
                 }
 
                 // 分享码可见性：所有平台一致
@@ -567,6 +589,90 @@ struct PublishView: View {
             .foregroundColor(.appForeground)
     }
 
+    // MARK: 盲盒奖项编辑器（对应网页 Publish.tsx 盲盒无料项配置）
+    private var mysteryEditor: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 6) {
+                Image(systemName: "dice")
+                    .font(.system(size: 14))
+                    .foregroundColor(Color(hex: "#7c3aed"))
+                Text("盲盒无料项（名称 + 码 + 概率）")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.appForeground)
+            }
+            .padding(.bottom, 8)
+
+            VStack(spacing: 8) {
+                ForEach($mysteryItems) { $it in
+                    HStack(spacing: 6) {
+                        AppTextField(text: $it.name, placeholder: "名称（如 123 吧唧）")
+                            .onChange(of: it.name) { v in if v.count > 120 { it.name = String(v.prefix(120)) } }
+                        AppTextField(text: $it.code, placeholder: "码", monospace: true)
+                            .frame(width: 108)
+                            .onChange(of: it.code) { v in if v.count > 128 { it.code = String(v.prefix(128)) } }
+                        HStack(spacing: 2) {
+                            AppTextField(text: $it.percent, placeholder: "概率", keyboard: .decimalPad)
+                                .onChange(of: it.percent) { v in
+                                    let f = v.filter { $0.isNumber || $0 == "." }
+                                    if f != v { it.percent = f }
+                                }
+                            Text("%").font(.system(size: 12)).foregroundColor(.appMutedFg)
+                        }
+                        .frame(width: 92)
+                        Button {
+                            if mysteryItems.count > 2 {
+                                mysteryItems.removeAll { $0.id == it.id }
+                            }
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.system(size: 14))
+                                .foregroundColor(mysteryItems.count <= 2 ? Color.appMutedFg.opacity(0.3) : .appMutedFg)
+                                .padding(6)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(mysteryItems.count <= 2)
+                    }
+                }
+            }
+
+            HStack {
+                Button {
+                    mysteryItems.append(MysteryItemInput())
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus").font(.system(size: 11))
+                        Text("加一项").font(.system(size: 12, weight: .medium))
+                    }
+                    .foregroundColor(Color(hex: "#6d28d9"))
+                    .padding(.horizontal, 12).padding(.vertical, 6)
+                    .overlay(Capsule().stroke(Color(hex: "#c4b5fd"), lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+                Spacer(minLength: 0)
+                let total = mysteryItems.reduce(0.0) { $0 + (Double($1.percent) ?? 0) }
+                let ok = Int((total * 100).rounded()) == 10000
+                Text("概率合计：\(fmtTotal(total))% \(ok ? "✓" : "（需 = 100%）")")
+                    .font(.system(size: 12, weight: .semibold))
+                    .monospacedDigit()
+                    .foregroundColor(ok ? .fixEmerald600 : .fixAmber600)
+            }
+            .padding(.top, 10)
+
+            noteText("提示：各项概率合计必须等于 100% 才能发布。访客看到的是按概率从低到高排列的名称和百分比，码不公开。")
+                .padding(.top, 8)
+        }
+        .padding(12)
+        .background(Color(hex: "#f5f3ff").opacity(0.6))
+        .cornerRadius(5)
+        .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color(hex: "#c4b5fd"), lineWidth: 1))
+    }
+
+    private func fmtTotal(_ p: Double) -> String {
+        let r = (p * 100).rounded() / 100
+        if r == r.rounded() { return String(Int(r)) }
+        return String(format: "%g", r)
+    }
+
     private func prefill() {
         guard let d = editing else { return }
         title = d.title
@@ -590,6 +696,17 @@ struct PublishView: View {
         descriptionText = d.description ?? ""
         existingCover = d.coverImage
         shippingFree = d.shippingFree ?? false
+        // 盲盒回填：发布者可见全量 ownerMysteryItems
+        isMystery = d.isMystery ?? false
+        if d.isMystery == true, let items = d.ownerMysteryItems, !items.isEmpty {
+            mysteryItems = items.map { m in
+                var it = MysteryItemInput()
+                it.name = m.name
+                it.code = m.code
+                it.percent = (m.percent == m.percent.rounded()) ? String(Int(m.percent)) : String(format: "%g", m.percent)
+                return it
+            }
+        }
         selectedTags = d.tags ?? []
         pinned = d.pinned ?? false
     }
@@ -617,6 +734,8 @@ struct PublishView: View {
         expiresDate = Date().addingTimeInterval(7 * 86400)
         shippingFree = false
         pinned = false
+        isMystery = false
+        mysteryItems = [MysteryItemInput(), MysteryItemInput()]
     }
 
     private func searchTags() async {
@@ -640,7 +759,7 @@ struct PublishView: View {
         let trimmed = title.trimmingCharacters(in: .whitespaces)
         let codeT = rouzaoCode.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { ToastCenter.shared.error("请填写标题"); return }
-        if platform != "external" && codeT.isEmpty {
+        if platform != "external" && !isMystery && codeT.isEmpty {
             ToastCenter.shared.error("请填写无料码；没有码的话请选择「外部无料」"); return
         }
         guard cover != nil || existingCover != nil else { ToastCenter.shared.error("请上传封面图"); return }
@@ -660,17 +779,45 @@ struct PublishView: View {
             }
             qty = q
         }
-        // 码为空按外部无料发布
-        let plat = codeT.isEmpty ? "external" : platform
+        // 盲盒：校验奖项（至少 2 项、名称/码非空、概率合计 100%）
+        var mysteryPayload: [[String: Any]]? = nil
+        if isMystery {
+            if platform == "external" {
+                ToastCenter.shared.error("盲盒仅支持有码的平台橱窗（柔造/映糖）"); return
+            }
+            if mysteryItems.count < 2 {
+                ToastCenter.shared.error("盲盒至少需要 2 个无料项"); return
+            }
+            var rows: [[String: Any]] = []
+            for (i, it) in mysteryItems.enumerated() {
+                let name = it.name.trimmingCharacters(in: .whitespaces)
+                let code = it.code.trimmingCharacters(in: .whitespaces)
+                if name.isEmpty { ToastCenter.shared.error("第 \(i + 1) 项请填写无料名称"); return }
+                if code.isEmpty { ToastCenter.shared.error("第 \(i + 1) 项请填写对应的码"); return }
+                guard let p = Double(it.percent), p > 0 else {
+                    ToastCenter.shared.error("第 \(i + 1) 项概率请填大于 0 的数字"); return
+                }
+                if p > 100 { ToastCenter.shared.error("第 \(i + 1) 项概率不能超过 100%"); return }
+                rows.append(["name": name, "code": code, "percent": p])
+            }
+            let total = rows.reduce(0.0) { $0 + ($1["percent"] as? Double ?? 0) }
+            if Int((total * 100).rounded()) != 10000 {
+                ToastCenter.shared.error("概率合计须等于 100%，当前为 \(fmtTotal(total))%，请调整后再发布"); return
+            }
+            mysteryPayload = rows
+        }
+        // 码为空按外部无料发布；盲盒保持所选平台（码在各奖项里）
+        let plat = isMystery ? platform : (codeT.isEmpty ? "external" : platform)
         if plat == "external" && hasAddrDeadline && addrDeadlineDate.timeIntervalSinceNow < 600 {
             ToastCenter.shared.error("地址时限至少要比现在晚 10 分钟"); return
         }
         if plat != "external" && hasExpires && expiresDate.timeIntervalSinceNow < 600 {
             ToastCenter.shared.error("失效时间至少要比现在晚 10 分钟"); return
         }
-        // 限量（任何平台）→ 可见性强制「申请领取」；码为空可见性强制 open
+        // 限量（任何平台）→ 可见性强制「申请领取」；码为空可见性强制 open（盲盒除外）
         let vis = limited ? "request" : codeVisibility
-        let visFinal = codeT.isEmpty ? "open" : vis
+        let visFinal = (isMystery || !codeT.isEmpty) ? vis : "open"
+        let codeFinal = isMystery ? "" : codeT
         let iso = ISO8601DateFormatter()
         iso.formatOptions = [.withInternetDateTime]
         let dl: String? = (plat == "external" && hasAddrDeadline) ? iso.string(from: addrDeadlineDate) : nil
@@ -691,22 +838,24 @@ struct PublishView: View {
             let tagIds = selectedTags.map { $0.id }
             if let d = editing {
                 _ = try await MashanglingAPI.shared.showcase.update(
-                    id: d.id, title: trimmed, platform: plat, rouzaoCode: codeT,
+                    id: d.id, title: trimmed, platform: plat, rouzaoCode: codeFinal,
                     codeVisibility: visFinal, description: descriptionText,
                     coverImage: coverData, tagIds: tagIds, stockStatus: stockStatus,
                     quantity: qty, claimMode: claimMode, pointCost: pc,
                     addressDeadline: dl, expiresAt: exp,
-                    shippingFree: ship, pinned: pinned)
+                    shippingFree: ship, pinned: pinned,
+                    isMystery: isMystery, mysteryItems: mysteryPayload)
                 ToastCenter.shared.success("已保存修改")
                 dismiss()
             } else {
                 let newId = try await MashanglingAPI.shared.showcase.create(
-                    title: trimmed, platform: plat, rouzaoCode: codeT,
+                    title: trimmed, platform: plat, rouzaoCode: codeFinal,
                     codeVisibility: visFinal, description: descriptionText,
                     coverImage: coverData, tagIds: tagIds, stockStatus: stockStatus,
                     quantity: qty, claimMode: claimMode, pointCost: pc,
                     addressDeadline: dl, expiresAt: exp,
-                    shippingFree: ship)
+                    shippingFree: ship,
+                    isMystery: isMystery, mysteryItems: mysteryPayload)
                 ToastCenter.shared.success("发布成功！")
                 // 网页行为：发布成功即离开本页，下次进入是全新空白表单；
                 // App 发布 Tab 常驻，必须显式清空，否则旧内容残留像「在编辑原橱窗」
@@ -717,4 +866,12 @@ struct PublishView: View {
             ToastCenter.shared.error(error.localizedDescription)
         }
     }
+}
+
+// MARK: - 盲盒奖项输入行（发布/编辑页本地状态）
+struct MysteryItemInput: Identifiable, Equatable {
+    let id = UUID()
+    var name = ""
+    var code = ""
+    var percent = ""
 }

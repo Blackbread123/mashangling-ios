@@ -210,6 +210,8 @@ struct Showcase: Codable, Identifiable {
     let claimedByMe: Bool?
     let addressSentByMe: Bool?
     let addressCount: Int?
+    /// 盲盒橱窗：true 时卡片显示紫色「盲盒」胶囊
+    let isMystery: Bool?
 
     var authorName: String? { author?.name }
 
@@ -273,10 +275,44 @@ struct ShowcaseDetailData: Codable {
     let expiresAtText: String?
     let myGift: GiftRef?
     let related: [Showcase]?
+    // 盲盒字段（showcase.byId，isMystery=true 时下发）
+    let isMystery: Bool?
+    let mysteryTable: [MysteryTableItem]?      // 所有人可见：[{name, percent}] 概率升序，不含码
+    let mysteryPity: MysteryPity?              // 保底信息
+    let myMysteryDraws: [MysteryDraw]?         // 登录领取人：我抽中的码（倒序）
+    let ownerMysteryItems: [OwnerMysteryItem]? // 仅发布者：全量码
 
     struct GiftRef: Codable {
         let id: Int
         let fromName: String
+    }
+
+    struct MysteryTableItem: Codable {
+        let name: String
+        let percent: Double
+    }
+
+    struct MysteryPity: Codable {
+        let names: [String]        // 最低概率款（可能多款并列）
+        let percent: Double        // 最低概率（%）
+        let base: Int              // 保底周期：每 base 抽内必中一次
+        let count: Int?            // 本轮我已抽次数（仅登录非发布者）
+        let remaining: Int?        // 还差几抽触发保底
+        let roundDone: Int?        // 本轮已集齐几款
+        let roundTotal: Int?       // 并列最低款总数
+    }
+
+    struct MysteryDraw: Codable {
+        let name: String
+        let code: String
+        let percent: Double
+        let drawnAt: String?
+    }
+
+    struct OwnerMysteryItem: Codable {
+        let name: String
+        let code: String
+        let percent: Double
     }
 }
 
@@ -531,11 +567,17 @@ struct PointsMy: Codable {
     }
 }
 
+/// 积分滚动条条目（points.ticker）：积分流水 或 盲盒隐藏款通报（type 区分）
 struct PointsTickerRow: Codable, Identifiable {
-    var id: String { "\(name)-\(delta)-\(label)" }
+    var id: String { "\(type ?? "points")-\(name)-\(delta ?? 0)-\(label ?? itemName ?? "")" }
+    let type: String?           // "points" / "mystery_rare_hit"
     let name: String
-    let delta: Int
-    let label: String
+    let delta: Int?
+    let label: String?
+    let itemName: String?       // mystery_rare_hit：抽中的隐藏款名
+    let showcaseTitle: String?  // mystery_rare_hit：所属橱窗标题
+
+    var isRareHit: Bool { type == "mystery_rare_hit" }
 }
 
 struct PointLogRow: Codable, Identifiable {
@@ -1320,7 +1362,8 @@ struct BookmarkedShowcase: Codable, Identifiable {
                  isFullyClaimed: isFullyClaimed, createdAt: createdAt, author: author,
                  tags: tags, likeCount: likeCount, claimCount: claimCount,
                  codeCount: codeCount, likedByMe: likedByMe, claimedByMe: claimedByMe,
-                 addressSentByMe: addressSentByMe, addressCount: addressCount)
+                 addressSentByMe: addressSentByMe, addressCount: addressCount,
+                 isMystery: nil)
     }
 }
 
@@ -1358,6 +1401,8 @@ struct ShipItem: Codable, Identifiable {
     let autoShipAt: Int?           // 毫秒时间戳
     let shipStatus: String?
     let shipCheckedAt: String?
+    /// 盲盒橱窗：该领取人抽中的全部品类（时间正序）；非盲盒为 null
+    let mysteryDraws: [MysteryDrawRef]?
 
     /// 状态文案（复刻网页 shipStatusOf）
     var stateText: String {
@@ -1397,6 +1442,7 @@ struct ShippingBoard: Codable {
 /// 收到的地址（address.received）
 struct ReceivedAddresses: Codable {
     let showcaseTitle: String?
+    let isMystery: Bool?
     let items: [ReceivedAddress]?
 
     struct ReceivedAddress: Codable, Identifiable {
@@ -1406,6 +1452,36 @@ struct ReceivedAddresses: Codable {
         let phone: String
         let full: String?
         let createdAt: String?
+        /// 盲盒橱窗：该领取人抽中的全部品类；非盲盒为 null
+        let mysteryDraws: [MysteryDrawRef]?
+    }
+}
+
+/// 盲盒抽中品类引用（寄件接口下发，只含名称不含码）
+struct MysteryDrawRef: Codable {
+    let name: String
+    let drawnAt: String?
+}
+
+// MARK: - 盲盒概率公示（showcase.mysteryStats，公开）
+
+struct MysteryStatsResponse: Codable {
+    let items: [MysteryStatsItem]?
+
+    struct MysteryStatsItem: Codable, Identifiable {
+        var id: Int { showcaseId }
+        let showcaseId: Int
+        let title: String
+        let removed: Bool?
+        let totalDraws: Int?
+        let items: [Entry]?
+
+        struct Entry: Codable {
+            let name: String
+            let expect: Double      // 设定概率 %
+            let count: Int          // 实际抽中次数
+            let actual: Double?     // 实际占比 %（无抽取时 null，显示「—」）
+        }
     }
 }
 
