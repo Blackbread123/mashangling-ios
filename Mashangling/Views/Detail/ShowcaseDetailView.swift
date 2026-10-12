@@ -167,23 +167,29 @@ struct ShowcaseDetailView: View {
         .background(dmAuthorLink)
     }
 
-    // MARK: 标题行（24px 粗 + 平台/限时/浏览胶囊，gap 10）
+    // MARK: 标题行（24px 粗 + 平台/限时/浏览胶囊）
+    // 网页为 flex flex-wrap：标题 min-w-0 max-w-full break-words，徽章 shrink-0 可换行。
+    // App 侧若用单行 HStack，多个徽章会把标题挤成零宽（一字一行竖排且字形被裁剪），
+    // 因此改为标题独占整行 + 徽章行紧随其下（与网页移动端窄屏换行后的效果一致）。
     private func titleRow(_ d: ShowcaseDetailData) -> some View {
-        HStack(alignment: .center, spacing: 10) {
+        VStack(alignment: .leading, spacing: 6) {
             Text(d.title)
                 .font(.system(size: 24, weight: .bold))
                 .tracking(-0.6)
                 .foregroundColor(.appForeground)
                 .fixedSize(horizontal: false, vertical: true)
-            Text(PlatformLabel.of(d.platform))
-                .font(.system(size: 12))
-                .foregroundColor(.appSecondaryFg)
-                .padding(.horizontal, 10).padding(.vertical, 2)
-                .background(Color.appSecondary)
-                .clipShape(Capsule())
-                .fixedSize()
-            if d.expiresAt != nil { expiresPill(d) }
-            if d.isMine == true { viewsPill(d) }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 10) {
+                Text(PlatformLabel.of(d.platform))
+                    .font(.system(size: 12))
+                    .foregroundColor(.appSecondaryFg)
+                    .padding(.horizontal, 10).padding(.vertical, 2)
+                    .background(Color.appSecondary)
+                    .clipShape(Capsule())
+                    .fixedSize()
+                if d.expiresAt != nil { expiresPill(d) }
+                if d.isMine == true { viewsPill(d) }
+            }
         }
     }
 
