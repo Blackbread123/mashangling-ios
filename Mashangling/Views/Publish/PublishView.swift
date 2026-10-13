@@ -799,8 +799,7 @@ struct PublishView: View {
                      stockStatus, claimMode, quantityText, pointCostText,
                      shippingFree ? "1" : "0", isMystery ? "1" : "0"]
         for it in mysteryItems { parts.append("\(it.name)|\(it.code)|\(it.percent)") }
-        return parts.joined(separator: "
-")
+        return parts.joined(separator: "\n")
     }
 
     private func scheduleDraftSave() {
