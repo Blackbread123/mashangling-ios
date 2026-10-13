@@ -231,7 +231,7 @@ struct MessagesView: View {
                             .font(.system(size: 9, weight: .bold))
                             .foregroundColor(.white)
                             .padding(.horizontal, 4)
-                            .frame(minWidth: 15, height: 15)
+                            .frame(minWidth: 15, minHeight: 15)
                             .background(Color.appDestructive)
                             .clipShape(Capsule())
                             .offset(x: 6, y: -5)
