@@ -51,6 +51,22 @@ actor MashanglingAPI {
             ])
             return r.ok ?? false
         }
+
+        /// 忘记密码：发送重置邮件（网页 2026-10-13：无论邮箱是否注册都返回 ok，防账号枚举）
+        func forgotPassword(email: String) async throws -> Bool {
+            let r: OkResponse = try await client.post("emailAuth.forgotPassword", input: [
+                "email": email,
+            ])
+            return r.ok ?? false
+        }
+
+        /// 重置密码（token 来自邮件链接；成功后服务端直接签发会话 Cookie，无需再登录）
+        func resetPassword(token: String, password: String) async throws -> Bool {
+            let r: OkResponse = try await client.post("emailAuth.resetPassword", input: [
+                "token": token, "password": password,
+            ])
+            return r.ok ?? false
+        }
     }
 
     // MARK: - 橱窗（showcase.*）

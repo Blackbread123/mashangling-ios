@@ -36,6 +36,9 @@ struct PublishView: View {
     @State private var mysteryItems: [MysteryItemInput] = [MysteryItemInput(), MysteryItemInput()]
     @State private var busy = false
     @State private var publishedId: Int? = nil
+    // 发布草稿（网页 2026-10-13：localStorage["publish_draft_v1"] + 800ms 防抖，仅新建模式）
+    @State private var draftPending: PublishDraft? = nil
+    @State private var draftSaveTask: Task<Void, Never>? = nil
 
     private var isEdit: Bool { editing != nil }
     private let tagMax = 8
@@ -362,7 +365,24 @@ struct PublishView: View {
                 .hidden()
         )
         .sheet(isPresented: $showPicker) { ImagePicker(image: $cover) }
-        .onAppear { prefill() }
+        .onAppear {
+            prefill()
+            checkDraft()
+        }
+        // 草稿：内容变化后 800ms 防抖自动保存（仅新建模式）
+        .onChange(of: draftFingerprint) { _ in scheduleDraftSave() }
+        // 草稿询问弹窗（网页：「继续上次未发布的橱窗？」可恢复或丢弃）
+        .confirmationDialog("继续上次未发布的橱窗？", isPresented: Binding(
+            get: { draftPending != nil },
+            set: { if !$0 { draftPending = nil } }
+        ), titleVisibility: .visible) {
+            Button("恢复草稿") { restoreDraft() }
+            Button("丢弃草稿", role: .destructive) { discardDraft() }
+        } message: {
+            if let d = draftPending {
+                Text("标题：\(d.title.isEmpty ? "（未填写）" : d.title)\n类型：\(d.isMystery ? "盲盒橱窗" : "普通橱窗")\n上次编辑：\(Self.draftTimeText(d.savedAt))")
+            }
+        }
     }
 
     // 封面预览（已选/回填）：自然比例，max-h-80，右下「更换图片」
@@ -590,6 +610,12 @@ struct PublishView: View {
     }
 
     // MARK: 盲盒奖项编辑器（对应网页 Publish.tsx 盲盒无料项配置）
+    /// 网页 2026-10-13：已发布盲盒（编辑模式且 ownerMysteryItems 非空）码和概率锁死，不能增删项，只能改名称
+    private var mysteryLocked: Bool {
+        guard isEdit, let d = editing else { return false }
+        return d.isMystery == true && !(d.ownerMysteryItems?.isEmpty ?? true)
+    }
+
     private var mysteryEditor: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
@@ -602,6 +628,24 @@ struct PublishView: View {
             }
             .padding(.bottom, 8)
 
+            // 网页：锁定提示条「码和概率已锁定，可以修改名称和照片」
+            if mysteryLocked {
+                HStack(spacing: 6) {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 11))
+                        .foregroundColor(.fixAmber600)
+                    Text("码和概率已锁定，可以修改名称和照片")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.fixAmber600)
+                }
+                .padding(.horizontal, 12).padding(.vertical, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.fixAmber100.opacity(0.6))
+                .cornerRadius(4)
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.fixAmber200, lineWidth: 1))
+                .padding(.bottom, 8)
+            }
+
             VStack(spacing: 8) {
                 ForEach($mysteryItems) { $it in
                     HStack(spacing: 6) {
@@ -610,44 +654,52 @@ struct PublishView: View {
                         AppTextField(text: $it.code, placeholder: "码", monospace: true)
                             .frame(width: 108)
                             .onChange(of: it.code) { v in if v.count > 128 { it.code = String(v.prefix(128)) } }
+                            .disabled(mysteryLocked)
+                            .opacity(mysteryLocked ? 0.5 : 1)
                         HStack(spacing: 2) {
                             AppTextField(text: $it.percent, placeholder: "概率", keyboard: .decimalPad)
                                 .onChange(of: it.percent) { v in
                                     let f = v.filter { $0.isNumber || $0 == "." }
                                     if f != v { it.percent = f }
                                 }
+                                .disabled(mysteryLocked)
+                                .opacity(mysteryLocked ? 0.5 : 1)
                             Text("%").font(.system(size: 12)).foregroundColor(.appMutedFg)
                         }
                         .frame(width: 92)
-                        Button {
-                            if mysteryItems.count > 2 {
-                                mysteryItems.removeAll { $0.id == it.id }
+                        if !mysteryLocked {
+                            Button {
+                                if mysteryItems.count > 2 {
+                                    mysteryItems.removeAll { $0.id == it.id }
+                                }
+                            } label: {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(mysteryItems.count <= 2 ? Color.appMutedFg.opacity(0.3) : .appMutedFg)
+                                    .padding(6)
                             }
-                        } label: {
-                            Image(systemName: "trash")
-                                .font(.system(size: 14))
-                                .foregroundColor(mysteryItems.count <= 2 ? Color.appMutedFg.opacity(0.3) : .appMutedFg)
-                                .padding(6)
+                            .buttonStyle(.plain)
+                            .disabled(mysteryItems.count <= 2)
                         }
-                        .buttonStyle(.plain)
-                        .disabled(mysteryItems.count <= 2)
                     }
                 }
             }
 
             HStack {
-                Button {
-                    mysteryItems.append(MysteryItemInput())
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "plus").font(.system(size: 11))
-                        Text("加一项").font(.system(size: 12, weight: .medium))
+                if !mysteryLocked {
+                    Button {
+                        mysteryItems.append(MysteryItemInput())
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus").font(.system(size: 11))
+                            Text("加一项").font(.system(size: 12, weight: .medium))
+                        }
+                        .foregroundColor(Color(hex: "#6d28d9"))
+                        .padding(.horizontal, 12).padding(.vertical, 6)
+                        .overlay(Capsule().stroke(Color(hex: "#c4b5fd"), lineWidth: 1))
                     }
-                    .foregroundColor(Color(hex: "#6d28d9"))
-                    .padding(.horizontal, 12).padding(.vertical, 6)
-                    .overlay(Capsule().stroke(Color(hex: "#c4b5fd"), lineWidth: 1))
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
                 Spacer(minLength: 0)
                 let total = mysteryItems.reduce(0.0) { $0 + (Double($1.percent) ?? 0) }
                 let ok = Int((total * 100).rounded()) == 10000
@@ -736,6 +788,104 @@ struct PublishView: View {
         pinned = false
         isMystery = false
         mysteryItems = [MysteryItemInput(), MysteryItemInput()]
+    }
+
+    // MARK: 发布草稿（网页 2026-10-13 Publish.tsx：localStorage["publish_draft_v1"]，800ms 防抖自动保存；仅新建模式，编辑已有橱窗不启用）
+    private static let draftKey = "publish_draft_v1"
+
+    /// 参与草稿保存的字段指纹（变化即触发防抖保存）；图片不入草稿（网页超配额时也只保文字）
+    private var draftFingerprint: String {
+        var parts = [title, platform, rouzaoCode, codeVisibility, descriptionText,
+                     stockStatus, claimMode, quantityText, pointCostText,
+                     shippingFree ? "1" : "0", isMystery ? "1" : "0"]
+        for it in mysteryItems { parts.append("\(it.name)\(it.code)\(it.percent)") }
+        return parts.joined(separator: "")
+    }
+
+    private func scheduleDraftSave() {
+        guard !isEdit else { return }
+        draftSaveTask?.cancel()
+        draftSaveTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            if Task.isCancelled { return }
+            saveDraft()
+        }
+    }
+
+    private func currentDraft() -> PublishDraft {
+        PublishDraft(
+            title: title, platform: platform, rouzaoCode: rouzaoCode,
+            codeVisibility: codeVisibility, descriptionText: descriptionText,
+            stockStatus: stockStatus, claimMode: claimMode,
+            quantityText: quantityText, pointCostText: pointCostText,
+            shippingFree: shippingFree, isMystery: isMystery,
+            mysteryItems: mysteryItems.map { ["name": $0.name, "code": $0.code, "percent": $0.percent] },
+            savedAt: Date().timeIntervalSince1970)
+    }
+
+    private func saveDraft() {
+        let d = currentDraft()
+        // 全空表单不存草稿
+        let empty = d.title.trimmingCharacters(in: .whitespaces).isEmpty
+            && d.rouzaoCode.trimmingCharacters(in: .whitespaces).isEmpty
+            && d.descriptionText.trimmingCharacters(in: .whitespaces).isEmpty
+        if empty {
+            UserDefaults.standard.removeObject(forKey: Self.draftKey)
+            return
+        }
+        if let data = try? JSONEncoder().encode(d) {
+            UserDefaults.standard.set(data, forKey: Self.draftKey)
+        }
+    }
+
+    private func checkDraft() {
+        guard !isEdit, draftPending == nil else { return }
+        guard let data = UserDefaults.standard.data(forKey: Self.draftKey),
+              let d = try? JSONDecoder().decode(PublishDraft.self, from: data) else { return }
+        // 表单已有内容时不打扰（例如恢复后再次触发 onAppear）
+        guard title.isEmpty && rouzaoCode.isEmpty && descriptionText.isEmpty else { return }
+        draftPending = d
+    }
+
+    private func restoreDraft() {
+        guard let d = draftPending else { return }
+        title = d.title
+        platform = d.platform
+        rouzaoCode = d.rouzaoCode
+        codeVisibility = d.codeVisibility
+        descriptionText = d.descriptionText
+        stockStatus = d.stockStatus
+        claimMode = d.claimMode
+        quantityText = d.quantityText
+        pointCostText = d.pointCostText
+        shippingFree = d.shippingFree
+        isMystery = d.isMystery
+        let rows = d.mysteryItems.compactMap { m -> MysteryItemInput? in
+            var it = MysteryItemInput()
+            it.name = m["name"] ?? ""
+            it.code = m["code"] ?? ""
+            it.percent = m["percent"] ?? ""
+            return it
+        }
+        if !rows.isEmpty { mysteryItems = rows }
+        draftPending = nil
+        ToastCenter.shared.success("已恢复上次未发布的草稿")
+    }
+
+    private func discardDraft() {
+        draftPending = nil
+        UserDefaults.standard.removeObject(forKey: Self.draftKey)
+    }
+
+    private static func clearDraft() {
+        UserDefaults.standard.removeObject(forKey: draftKey)
+    }
+
+    private static func draftTimeText(_ ts: TimeInterval) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "zh_CN")
+        f.dateFormat = "M月d日 HH:mm"
+        return f.string(from: Date(timeIntervalSince1970: ts))
     }
 
     private func searchTags() async {
@@ -857,6 +1007,8 @@ struct PublishView: View {
                     shippingFree: ship,
                     isMystery: isMystery, mysteryItems: mysteryPayload)
                 ToastCenter.shared.success("发布成功！")
+                // 网页：发布成功即清除草稿
+                Self.clearDraft()
                 // 网页行为：发布成功即离开本页，下次进入是全新空白表单；
                 // App 发布 Tab 常驻，必须显式清空，否则旧内容残留像「在编辑原橱窗」
                 resetForm()
@@ -874,4 +1026,21 @@ struct MysteryItemInput: Identifiable, Equatable {
     var name = ""
     var code = ""
     var percent = ""
+}
+
+// MARK: - 发布草稿（网页 publish_draft_v1；图片不入草稿，与网页超配额剔除图片一致）
+struct PublishDraft: Codable {
+    var title: String
+    var platform: String
+    var rouzaoCode: String
+    var codeVisibility: String
+    var descriptionText: String
+    var stockStatus: String
+    var claimMode: String
+    var quantityText: String
+    var pointCostText: String
+    var shippingFree: Bool
+    var isMystery: Bool
+    var mysteryItems: [[String: String]]
+    var savedAt: TimeInterval
 }

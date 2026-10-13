@@ -76,9 +76,9 @@ struct ShowcaseCardView: View {
                             Spacer()
                             VStack(alignment: .trailing, spacing: 4) {
                                 Spacer().frame(height: 28) // 平台标(top:8,高~20)+间距8 → 第二行 top:36
-                                // 网页里「余量」与「补」同在 right:8 top:36，补在后覆盖余量
+                                // 网页条件：quantity != null && remaining != null（remaining 仅本人可见，由后端按浏览者计算）
                                 ZStack(alignment: .topTrailing) {
-                                    if isOwner, let r = item.remaining, let q = item.quantity {
+                                    if let r = item.remaining, let q = item.quantity {
                                         Text("\(r)/\(q)")
                                             .font(.system(size: 11, weight: .bold))
                                             .monospacedDigit()

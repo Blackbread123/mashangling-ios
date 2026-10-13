@@ -6,7 +6,9 @@ struct MessagesView: View {
     @EnvironmentObject var authManager: AuthManager
 
     private enum TabKey: String, CaseIterable {
+        // 网页 2026-10-13：私信提升为顶层 tab，子标签栏不再出现「私信」
         case all, like, postComment, want, repost, soldout, claim, address, gift, dm
+        static var allCases: [TabKey] = [.all, .like, .postComment, .want, .repost, .soldout, .claim, .address, .gift]
         var label: String {
             switch self {
             case .all: return "全部"
@@ -23,10 +25,16 @@ struct MessagesView: View {
         }
     }
 
-    /// 网页 2026-10-08：消息页顶部「消息 / 动态」分段
+    /// 网页 2026-10-13：消息页顶部「消息 / 动态 / 私信」三段
     private enum ViewKey: String {
-        case messages, posts
-        var label: String { self == .messages ? "消息" : "动态" }
+        case messages, posts, dm
+        var label: String {
+            switch self {
+            case .messages: return "消息"
+            case .posts: return "动态"
+            case .dm: return "私信"
+            }
+        }
     }
 
     /// 网页 TYPE_ICON → SF Symbols
@@ -108,6 +116,10 @@ struct MessagesView: View {
                                         .id(postsFeedKey)
                                 }
                                 .padding(.top, 16)
+                            } else if view == .dm {
+                                // 网页 2026-10-13：私信顶层 tab（原「消息 → 私信」子标签内容原样上移）
+                                searchBar.padding(.top, 12)
+                                dmSection.padding(.top, 16)
                             } else {
                                 searchBar.padding(.top, 12)
                                 tabRow.padding(.top, 16)
@@ -165,12 +177,15 @@ struct MessagesView: View {
         }
     }
 
-    // MARK: 顶部分段「消息 / 动态」+ 一键已读（网页 2026-10-08：rounded-full border bg-secondary/60 p-1）
+    // MARK: 顶部分段「消息 / 动态 / 私信」+ 一键已读（网页 2026-10-13：rounded-full border bg-secondary/60 p-1；私信 tab 右上角未读红点）
     private var topRow: some View {
         HStack {
             HStack(spacing: 0) {
-                ForEach([ViewKey.messages, ViewKey.posts], id: \.self) { v in
-                    Button { view = v } label: {
+                ForEach([ViewKey.messages, ViewKey.posts, ViewKey.dm], id: \.self) { v in
+                    Button {
+                        view = v
+                        if v == .dm, !dmLoaded { Task { await loadConversations() } }
+                    } label: {
                         Text(v.label)
                             .font(.system(size: 14, weight: view == v ? .medium : .regular))
                             .foregroundColor(view == v ? Color.appPrimaryFg : Color.appMutedFg)
@@ -179,6 +194,19 @@ struct MessagesView: View {
                             .background(view == v ? Color.appPrimary : Color.clear)
                             .clipShape(Capsule())
                             .shadow(color: view == v ? Color.black.opacity(0.06) : .clear, radius: 2, y: 1)
+                            // 网页：未读私信红点（type==="dm" && !read 的条数，>99 显示 99+；进入私信 tab 后不显示）
+                            .overlay(alignment: .topTrailing) {
+                                if v == .dm, view != .dm, unreadDm > 0 {
+                                    Text(unreadDm > 99 ? "99+" : "\(unreadDm)")
+                                        .font(.system(size: 9, weight: .bold))
+                                        .foregroundColor(.white)
+                                        .padding(.horizontal, 4)
+                                        .frame(minWidth: 15, height: 15)
+                                        .background(Color.appDestructive)
+                                        .clipShape(Capsule())
+                                        .offset(x: 6, y: -5)
+                                }
+                            }
                     }
                     .buttonStyle(.plain)
                 }
@@ -188,7 +216,7 @@ struct MessagesView: View {
             .overlay(Capsule().stroke(Color.appBorder, lineWidth: 0.5))
             .clipShape(Capsule())
             Spacer()
-            if view == .messages && tab != .dm {
+            if view == .messages {
                 Button { Task { await markAll() } } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "checkmark")
@@ -295,6 +323,9 @@ struct MessagesView: View {
     }
 
     private var unreadInView: Int { items.filter { !$0.read }.count }
+
+    /// 网页 2026-10-13：未读私信数 = message.list 中 type==="dm" && !read 的条数
+    private var unreadDm: Int { messages.filter { $0.type == "dm" && !$0.read }.count }
 
     // MARK: 内容区
     @ViewBuilder
@@ -558,6 +589,12 @@ struct MessagesView: View {
             // 动态点赞/评论通知 → 切到「动态」分段（网页：/messages?tab=posts）
             if link.contains("tab=posts") {
                 view = .posts
+                return
+            }
+            // 网页 2026-10-13：/messages?tab=dm 深链直达私信 tab
+            if link.contains("tab=dm") {
+                view = .dm
+                if !dmLoaded { Task { await loadConversations() } }
                 return
             }
             if link.contains("/my-shipments") {

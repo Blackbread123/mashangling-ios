@@ -1155,7 +1155,8 @@ struct ShowcaseDetailView: View {
             } label: {
                 Label("分享给好友…", systemImage: "person.2")
             }
-            if d.isMine == true {
+            // 网页 2026-10-13：盲盒橱窗隐藏「以礼物分享」入口（gift.share 服务端也会拒绝）
+            if d.isMine == true, d.isMystery != true {
                 Button { showGiftSheet = true } label: {
                     Label("以礼物分享…", systemImage: "gift")
                 }
@@ -1497,9 +1498,17 @@ struct ShowcaseDetailView: View {
                     ForEach(reposts) { r in
                         VStack(alignment: .leading, spacing: 6) {
                             Button { repostViewer = ViewerItem(path: r.image) } label: {
-                                AppImage(path: r.image, contentMode: .fill)
-                                    .aspectRatio(1, contentMode: .fill)
-                                    .frame(maxWidth: .infinity)
+                                // 网页：aspect-square + object-cover；用 GeometryReader 钉死方形，
+                                // 否则 AppImage 的 fill 会把单元格撑成原图比例（大图巨高、参差不齐）
+                                Color.appSecondary
+                                    .aspectRatio(1, contentMode: .fit)
+                                    .overlay(
+                                        GeometryReader { geo in
+                                            AppImage(path: r.image, contentMode: .fill)
+                                                .frame(width: geo.size.width, height: geo.size.height)
+                                                .clipped()
+                                        }
+                                    )
                                     .clipped()
                                     .cornerRadius(4)
                                     .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder.opacity(0.6), lineWidth: 1))
