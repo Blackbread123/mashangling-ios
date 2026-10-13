@@ -182,33 +182,7 @@ struct MessagesView: View {
         HStack {
             HStack(spacing: 0) {
                 ForEach([ViewKey.messages, ViewKey.posts, ViewKey.dm], id: \.self) { v in
-                    Button {
-                        view = v
-                        if v == .dm, !dmLoaded { Task { await loadConversations() } }
-                    } label: {
-                        Text(v.label)
-                            .font(.system(size: 14, weight: view == v ? .medium : .regular))
-                            .foregroundColor(view == v ? Color.appPrimaryFg : Color.appMutedFg)
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 6)
-                            .background(view == v ? Color.appPrimary : Color.clear)
-                            .clipShape(Capsule())
-                            .shadow(color: view == v ? Color.black.opacity(0.06) : .clear, radius: 2, y: 1)
-                            // 网页：未读私信红点（type==="dm" && !read 的条数，>99 显示 99+；进入私信 tab 后不显示）
-                            .overlay(alignment: .topTrailing) {
-                                if v == .dm, view != .dm, unreadDm > 0 {
-                                    Text(unreadDm > 99 ? "99+" : "\(unreadDm)")
-                                        .font(.system(size: 9, weight: .bold))
-                                        .foregroundColor(.white)
-                                        .padding(.horizontal, 4)
-                                        .frame(minWidth: 15, height: 15)
-                                        .background(Color.appDestructive)
-                                        .clipShape(Capsule())
-                                        .offset(x: 6, y: -5)
-                                }
-                            }
-                    }
-                    .buttonStyle(.plain)
+                    viewTab(v)
                 }
             }
             .padding(4)
@@ -235,6 +209,36 @@ struct MessagesView: View {
                 .disabled(markingAll || unreadInView == 0)
             }
         }
+    }
+
+    /// 顶层分段按钮（私信 tab 带未读红点，>99 显示 99+；进入私信后不显示）
+    private func viewTab(_ v: ViewKey) -> some View {
+        Button {
+            view = v
+            if v == .dm, !dmLoaded { Task { await loadConversations() } }
+        } label: {
+            Text(v.label)
+                .font(.system(size: 14, weight: view == v ? .medium : .regular))
+                .foregroundColor(view == v ? Color.appPrimaryFg : Color.appMutedFg)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 6)
+                .background(view == v ? Color.appPrimary : Color.clear)
+                .clipShape(Capsule())
+                .shadow(color: view == v ? Color.black.opacity(0.06) : .clear, radius: 2, y: 1)
+                .overlay(alignment: .topTrailing) {
+                    if v == .dm, view != .dm, unreadDm > 0 {
+                        Text(unreadDm > 99 ? "99+" : "\(unreadDm)")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 4)
+                            .frame(minWidth: 15, height: 15)
+                            .background(Color.appDestructive)
+                            .clipShape(Capsule())
+                            .offset(x: 6, y: -5)
+                    }
+                }
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: 关键词搜索（网页：rounded-full border bg-card pl-9 pr-9，左侧放大镜右侧清空）
