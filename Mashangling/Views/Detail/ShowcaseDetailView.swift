@@ -42,6 +42,8 @@ struct ShowcaseDetailView: View {
     @State private var repostViewer: ViewerItem? = nil
     @State private var repostDelete: RepostRow? = nil
     @State private var repostReport: IntItem? = nil
+    // 盲盒抽中结果照片墙（网页 2026-10-13：claim.create 返回 drawn 数组，1/5/10 张并排）
+    @State private var drawResult: [MashanglingAPI.ClaimService.DrawnItem]? = nil
 
     struct ShareImageItem: Identifiable {
         let id = UUID()
@@ -104,6 +106,12 @@ struct ShowcaseDetailView: View {
         }
         .fullScreenCover(item: $repostViewer) { item in
             ImageViewerCover(path: item.path)
+        }
+        // 盲盒抽中结果照片墙（网页 Dialog：1 次 1 张；≤5 一排；10 连两排。码在「我抽到的码」区查看）
+        .sheet(isPresented: Binding(get: { drawResult != nil }, set: { if !$0 { drawResult = nil } })) {
+            if let drawn = drawResult {
+                drawResultSheet(drawn)
+            }
         }
         .confirmationDialog("删除这个橱窗？", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
             Button("确认删除", role: .destructive) { Task { await removeShowcase() } }
@@ -1554,6 +1562,53 @@ struct ShowcaseDetailView: View {
         }
     }
 
+    // MARK: 盲盒抽中结果照片墙（网页 2026-10-13 Dialog：grid 列数 = 1 次 1 列，≤5 一排，10 连 5 列两排）
+    private func drawResultSheet(_ drawn: [MashanglingAPI.ClaimService.DrawnItem]) -> some View {
+        let cols = drawn.count == 1 ? 1 : min(drawn.count, 5)
+        return VStack(spacing: 16) {
+            HStack(spacing: 6) {
+                Image(systemName: "dice")
+                    .font(.system(size: 18))
+                    .foregroundColor(Color(hex: "#8b5cf6"))
+                Text(drawn.count > 1 ? "连抽 \(drawn.count) 次结果" : "抽中啦！")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.appForeground)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: cols), spacing: 8) {
+                ForEach(Array(drawn.enumerated()), id: \.offset) { _, r in
+                    VStack(spacing: 4) {
+                        Color.appSecondary
+                            .aspectRatio(1, contentMode: .fit)
+                            .overlay(
+                                GeometryReader { geo in
+                                    AppImage(path: r.image, contentMode: .fill)
+                                        .frame(width: geo.size.width, height: geo.size.height)
+                                        .clipped()
+                                }
+                            )
+                            .clipped()
+                            .cornerRadius(8)
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(hex: "#ddd6fe"), lineWidth: 1))
+                        Text(r.name)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(Color(hex: "#6d28d9"))
+                            .lineLimit(1)
+                    }
+                }
+            }
+
+            Text("对应的无料码已在「我抽到的码」区解锁，可复制使用")
+                .font(.system(size: 11))
+                .foregroundColor(.appMutedFg)
+                .frame(maxWidth: .infinity)
+        }
+        .padding(20)
+        .background(Color.appBackground)
+        .presentationDetents([.medium, .large])
+    }
+
     private func canDeleteRepost(_ r: RepostRow) -> Bool {
         r.userId == authManager.currentUser?.id || authManager.currentUser?.isAdmin == true
     }
@@ -1816,20 +1871,25 @@ struct ShowcaseDetailView: View {
         }
     }
 
-    // 盲盒抽取（claim.create 带 count；结果以重新加载后的 myMysteryDraws 为准）
+    // 盲盒抽取（claim.create 带 count；返回 drawn 时弹照片墙，否则 toast 提示）
     private func mysteryDraw(_ d: ShowcaseDetailData, count: Int) async {
         let isPoints = d.claimMode == "points"
         busy = true
         defer { busy = false }
         do {
-            _ = try await MashanglingAPI.shared.claim.create(showcaseId: showcaseId, count: count)
-            let msg: String
-            if isPoints {
-                msg = count > 1 ? "连抽 \(count) 次完成，积分已转给发布者" : "解锁成功，积分已转给发布者"
+            let r = try await MashanglingAPI.shared.claim.create(showcaseId: showcaseId, count: count)
+            // 网页：服务端返回本次抽中的奖项（名称+照片）→ 弹出结果照片墙
+            if let drawn = r.drawn, !drawn.isEmpty {
+                drawResult = drawn
             } else {
-                msg = count > 1 ? "连抽 \(count) 次完成，结果已加入上方盲盒区" : "抽取成功，结果已加入上方盲盒区"
+                let msg: String
+                if isPoints {
+                    msg = count > 1 ? "连抽 \(count) 次完成，积分已转给发布者" : "解锁成功，积分已转给发布者"
+                } else {
+                    msg = count > 1 ? "连抽 \(count) 次完成，结果已加入上方盲盒区" : "抽取成功，结果已加入上方盲盒区"
+                }
+                ToastCenter.shared.success(msg)
             }
-            ToastCenter.shared.success(msg)
             await load()
         } catch {
             let msg = error.localizedDescription

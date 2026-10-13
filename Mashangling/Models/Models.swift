@@ -313,7 +313,40 @@ struct ShowcaseDetailData: Codable {
         let name: String
         let code: String
         let percent: Double
+        let image: String?           // 网页 2026-10-13：/api/mystery-item-img/:id?v= 图片 URL（无图回退封面）
+        let hasCustomImage: Bool?    // false = 当前显示的是封面占位图
     }
+}
+
+// MARK: - 盲盒图鉴（claim.collection，网页 2026-10-13 MysteryCollection.tsx）
+
+struct MysteryCollectionItem: Codable {
+    let itemId: Int
+    let name: String
+    let percent: Double
+    let image: String?
+    let owned: Bool?               // 我抽中过 → 点亮
+    let code: String?              // owned=true 时带码
+}
+
+struct MysteryCollectionCard: Codable, Identifiable {
+    let showcaseId: Int
+    let title: String
+    let removed: Bool?
+    let createdAt: String?
+    let mine: Bool?                // 我发布的橱窗：默认全部解锁，不参与集齐奖励
+    let totalItems: Int
+    let ownedCount: Int
+    let complete: Bool?
+    let claimed: Bool?
+    let pending: Bool?             // complete && !claimed && !mine → 红点
+    let items: [MysteryCollectionItem]?
+    var id: Int { showcaseId }
+}
+
+struct MysteryCollectionResponse: Codable {
+    let items: [MysteryCollectionCard]?
+    let rewardPoints: Int?
 }
 
 // MARK: - 用户（auth.me 返回 users 全行，去掉 passwordHash）

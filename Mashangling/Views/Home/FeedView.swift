@@ -14,6 +14,7 @@ struct FeedView: View {
     @State private var showLogin = false
     @State private var openDetailId: Int? = nil
     @State private var showMysteryStats = false
+    @State private var showMysteryCollection = false
 
     private let columns = [
         GridItem(.flexible(), spacing: 20),
@@ -74,6 +75,9 @@ struct FeedView: View {
         }
         .navigationDestination(isPresented: $showMysteryStats) {
             MysteryStatsView()
+        }
+        .navigationDestination(isPresented: $showMysteryCollection) {
+            MysteryCollectionView()
         }
     }
 
@@ -147,6 +151,28 @@ struct FeedView: View {
                     HStack(spacing: 8) {
                         Image(systemName: "chart.bar").font(.system(size: 12))
                         Text("盲盒概率公示：每个奖项的设定概率与全站实际抽中占比公开可查")
+                            .font(.system(size: 12))
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                        Spacer(minLength: 4)
+                        Text("查看 →")
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                    .foregroundColor(Color(red: 0.43, green: 0.27, blue: 0.78))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(red: 0.43, green: 0.27, blue: 0.78).opacity(0.08))
+                    .cornerRadius(12)
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(red: 0.66, green: 0.55, blue: 0.94), lineWidth: 0.5))
+                }
+                .buttonStyle(.plain)
+
+                // 盲盒分类：图鉴入口（网页 2026-10-13：点亮抽中过的无料，集齐一个橱窗可领 200 积分）
+                Button { showMysteryCollection = true } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "book").font(.system(size: 12))
+                        Text("盲盒图鉴：点亮你抽中过的无料，集齐一个橱窗可领 200 积分")
                             .font(.system(size: 12))
                             .lineLimit(2)
                             .multilineTextAlignment(.leading)

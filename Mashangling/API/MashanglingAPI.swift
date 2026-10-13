@@ -363,14 +363,36 @@ actor MashanglingAPI {
     struct ClaimService {
         let client: APIClient
 
+        /// claim.create 返回：ok + 盲盒本次抽中结果（名称+照片，仅即时/积分模式盲盒下发）
+        struct CreateResult: Codable {
+            let ok: Bool?
+            let drawn: [DrawnItem]?
+        }
+        struct DrawnItem: Codable {
+            let name: String
+            let image: String?
+        }
+
         /// 申请领取 / 凭证解锁 / 积分解锁 / 限量即领（统一入口）
         /// count：连抽次数 1/5/10，仅即时/积分模式的盲盒生效，其余恒为 1
-        func create(showcaseId: Int, note: String = "", credentialImage: String? = nil, count: Int = 1) async throws -> Bool {
+        @discardableResult
+        func create(showcaseId: Int, note: String = "", credentialImage: String? = nil, count: Int = 1) async throws -> CreateResult {
             var input: [String: Any] = ["showcaseId": showcaseId, "note": note]
             if let credentialImage = credentialImage { input["credentialImage"] = credentialImage }
             if count > 1 { input["count"] = count }
-            let r: OkResponse = try await client.post("claim.create", input: input)
-            return r.ok ?? false
+            return try await client.post("claim.create", input: input)
+        }
+
+        /// 盲盒图鉴（网页 2026-10-13：我抽中过的盲盒橱窗集卡，旧→新排序）
+        func collection() async throws -> MysteryCollectionResponse {
+            try await client.get("claim.collection")
+        }
+
+        /// 领取集齐奖励（每人每橱窗一次；自己的橱窗服务端会拒绝）
+        func claimCollectionReward(showcaseId: Int) async throws -> Int {
+            struct R: Codable { let ok: Bool?; let points: Int? }
+            let r: R = try await client.post("claim.claimCollectionReward", input: ["showcaseId": showcaseId])
+            return r.points ?? 200
         }
 
         /// 我收到的领取申请（发布者）

@@ -34,6 +34,10 @@ struct PublishView: View {
     // 盲盒：开关 + 奖项列表（名称 + 码 + 概率百分数字符串）
     @State private var isMystery = false
     @State private var mysteryItems: [MysteryItemInput] = [MysteryItemInput(), MysteryItemInput()]
+    // 奖项照片挑选目标行（-1 = 无）/ 正在编辑的奖项弹窗（网页 2026-10-13 移动端弹窗编辑）
+    @State private var pickingItemImg = -1
+    @State private var showItemImgPicker = false
+    @State private var editingItemIdx: Int? = nil
     @State private var busy = false
     @State private var publishedId: Int? = nil
     // 发布草稿（网页 2026-10-13：localStorage["publish_draft_v1"] + 800ms 防抖，仅新建模式）
@@ -365,6 +369,22 @@ struct PublishView: View {
                 .hidden()
         )
         .sheet(isPresented: $showPicker) { ImagePicker(image: $cover) }
+        // 奖项照片选择（pickingItemImg 标记目标行；压缩为 base64 data URI）
+        .sheet(isPresented: $showItemImgPicker) {
+            ImagePicker(image: Binding(
+                get: { nil },
+                set: { img in
+                    guard let img = img, pickingItemImg >= 0, pickingItemImg < mysteryItems.count else { return }
+                    if let dataURL = ImageCodec.coverDataURL(from: img) {
+                        mysteryItems[pickingItemImg].image = dataURL
+                        mysteryItems[pickingItemImg].hasCustomImage = true
+                    }
+                }))
+        }
+        // 奖项编辑弹窗（移动端：行太窄，点行弹窗编辑全部字段）
+        .sheet(isPresented: Binding(get: { editingItemIdx != nil }, set: { if !$0 { editingItemIdx = nil } })) {
+            if let idx = editingItemIdx { mysteryItemSheet(idx) }
+        }
         .onAppear {
             prefill()
             checkDraft()
@@ -609,8 +629,8 @@ struct PublishView: View {
             .foregroundColor(.appForeground)
     }
 
-    // MARK: 盲盒奖项编辑器（对应网页 Publish.tsx 盲盒无料项配置）
-    /// 网页 2026-10-13：已发布盲盒（编辑模式且 ownerMysteryItems 非空）码和概率锁死，不能增删项，只能改名称
+    // MARK: 盲盒奖项编辑器（对应网页 Publish.tsx 移动端布局：行内 缩略图+名称+概率+码，点行弹窗编辑全部字段）
+    /// 网页 2026-10-13：已发布盲盒（编辑模式且 ownerMysteryItems 非空）码和概率锁死，不能增删项，只能改名称和照片
     private var mysteryLocked: Bool {
         guard isEdit, let d = editing else { return false }
         return d.isMystery == true && !(d.ownerMysteryItems?.isEmpty ?? true)
@@ -622,51 +642,85 @@ struct PublishView: View {
                 Image(systemName: "dice")
                     .font(.system(size: 14))
                     .foregroundColor(Color(hex: "#7c3aed"))
-                Text("盲盒无料项（名称 + 码 + 概率）")
+                Text("盲盒无料项（照片 + 名称 + 码 + 概率）")
                     .font(.system(size: 14, weight: .medium))
                     .foregroundColor(.appForeground)
             }
             .padding(.bottom, 8)
 
-            // 网页：锁定提示条「码和概率已锁定，可以修改名称和照片」
-            if mysteryLocked {
-                HStack(spacing: 6) {
-                    Image(systemName: "lock.fill")
-                        .font(.system(size: 11))
-                        .foregroundColor(.fixAmber600)
-                    Text("码和概率已锁定，可以修改名称和照片")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.fixAmber600)
-                }
-                .padding(.horizontal, 12).padding(.vertical, 8)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.fixAmber100.opacity(0.6))
-                .cornerRadius(4)
-                .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.fixAmber200, lineWidth: 1))
-                .padding(.bottom, 8)
-            }
-
+            // 移动端行（网页 sm:hidden 分支）：缩略图 + 名称/概率 + 码小字，点行弹窗编辑
             VStack(spacing: 8) {
-                ForEach($mysteryItems) { $it in
-                    HStack(spacing: 6) {
-                        AppTextField(text: $it.name, placeholder: "名称（如 123 吧唧）")
-                            .onChange(of: it.name) { v in if v.count > 120 { it.name = String(v.prefix(120)) } }
-                        AppTextField(text: $it.code, placeholder: "码", monospace: true)
-                            .frame(width: 108)
-                            .onChange(of: it.code) { v in if v.count > 128 { it.code = String(v.prefix(128)) } }
-                            .disabled(mysteryLocked)
-                            .opacity(mysteryLocked ? 0.5 : 1)
-                        HStack(spacing: 2) {
-                            AppTextField(text: $it.percent, placeholder: "概率", keyboard: .decimalPad)
-                                .onChange(of: it.percent) { v in
-                                    let f = v.filter { $0.isNumber || $0 == "." }
-                                    if f != v { it.percent = f }
+                ForEach(Array(mysteryItems.enumerated()), id: \.element.id) { i, it in
+                    HStack(spacing: 8) {
+                        // 奖项照片缩略图：点击上传/更换（网页 h-11 w-11 rounded-lg；无图虚线框）
+                        Button {
+                            pickingItemImg = i
+                            showItemImgPicker = true
+                        } label: {
+                            ZStack {
+                                if let img = it.image, !img.isEmpty {
+                                    Color.clear
+                                        .overlay(
+                                            GeometryReader { geo in
+                                                AppImage(path: img, contentMode: .fill)
+                                                    .frame(width: geo.size.width, height: geo.size.height)
+                                                    .clipped()
+                                            }
+                                        )
+                                    if !it.hasCustomImage {
+                                        VStack {
+                                            Spacer(minLength: 0)
+                                            Text("占位")
+                                                .font(.system(size: 8))
+                                                .foregroundColor(.white)
+                                                .frame(maxWidth: .infinity)
+                                                .background(Color.black.opacity(0.55))
+                                        }
+                                    }
+                                } else {
+                                    Image(systemName: "photo.badge.plus")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(.appMutedFg)
                                 }
-                                .disabled(mysteryLocked)
-                                .opacity(mysteryLocked ? 0.5 : 1)
-                            Text("%").font(.system(size: 12)).foregroundColor(.appMutedFg)
+                            }
+                            .frame(width: 44, height: 44)
+                            .clipped()
+                            .cornerRadius(8)
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(
+                                (it.image?.isEmpty == false) ? Color(hex: "#c4b5fd") : Color.appInput,
+                                style: StrokeStyle(lineWidth: 1, dash: (it.image?.isEmpty == false) ? [] : [4])))
                         }
-                        .frame(width: 92)
+                        .buttonStyle(.plain)
+
+                        // 中部：点这里弹窗编辑（名称 + 概率 / 码小字等宽）
+                        Button { editingItemIdx = i } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 8) {
+                                    Text(it.name.isEmpty ? "第 \(i + 1) 项：点这里填写" : it.name)
+                                        .font(.system(size: 14))
+                                        .foregroundColor(it.name.isEmpty ? .appMutedFg : .appForeground)
+                                        .lineLimit(1)
+                                    Spacer(minLength: 4)
+                                    Text(it.percent.isEmpty ? "未设概率" : "\(it.percent)%")
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.appMutedFg)
+                                }
+                                if !it.code.isEmpty {
+                                    Text("码：\(it.code)")
+                                        .font(.system(size: 11, design: .monospaced))
+                                        .foregroundColor(.appMutedFg)
+                                        .lineLimit(1)
+                                }
+                            }
+                            .padding(.horizontal, 12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .frame(height: 44)
+                            .background(Color.appCard)
+                            .cornerRadius(8)
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.appInput, lineWidth: 1))
+                        }
+                        .buttonStyle(.plain)
+
                         if !mysteryLocked {
                             Button {
                                 if mysteryItems.count > 2 {
@@ -710,13 +764,146 @@ struct PublishView: View {
             }
             .padding(.top, 10)
 
-            noteText("提示：各项概率合计必须等于 100% 才能发布。访客看到的是按概率从低到高排列的名称和百分比，码不公开。")
-                .padding(.top, 8)
+            // 网页：锁定/未锁定两条提示文案（violet 底）
+            if mysteryLocked {
+                Text("已发布的盲盒：各奖项的码和概率已锁定（概率已公示，有人按它抽取过，改动对她们不公平），也不能增删项；可以修改名称和照片。")
+                    .font(.system(size: 11))
+                    .lineSpacing(4)
+                    .foregroundColor(Color(hex: "#6d28d9"))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 10).padding(.vertical, 8)
+                    .background(Color(hex: "#ede9fe").opacity(0.7))
+                    .cornerRadius(8)
+                    .padding(.top, 8)
+            } else {
+                noteText("提示：各项概率合计必须等于 100% 才能发布。访客看到的是按概率从低到高排列的名称和百分比，码不公开。可为每项上传照片，抽中时会弹出；不传照片则暂用橱窗封面占位，之后随时可以回来补上。发布后码和概率将锁定，请确认无误再发布。")
+                    .padding(.top, 8)
+            }
         }
         .padding(12)
         .background(Color(hex: "#f5f3ff").opacity(0.6))
         .cornerRadius(5)
         .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color(hex: "#c4b5fd"), lineWidth: 1))
+    }
+
+    // MARK: 盲盒奖项编辑弹窗（对应网页移动端 Dialog：照片 + 名称 + 码 + 概率）
+    private func mysteryItemSheet(_ idx: Int) -> some View {
+        guard idx >= 0, idx < mysteryItems.count else { return AnyView(EmptyView()) }
+        return AnyView(
+            NavigationStack {
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 16) {
+                        // 照片
+                        HStack(spacing: 12) {
+                            Button {
+                                pickingItemImg = idx
+                                showItemImgPicker = true
+                            } label: {
+                                ZStack {
+                                    if let img = mysteryItems[idx].image, !img.isEmpty {
+                                        Color.clear
+                                            .overlay(
+                                                GeometryReader { geo in
+                                                    AppImage(path: img, contentMode: .fill)
+                                                        .frame(width: geo.size.width, height: geo.size.height)
+                                                        .clipped()
+                                                }
+                                            )
+                                        if !mysteryItems[idx].hasCustomImage {
+                                            VStack {
+                                                Spacer(minLength: 0)
+                                                Text("占位")
+                                                    .font(.system(size: 9))
+                                                    .foregroundColor(.white)
+                                                    .frame(maxWidth: .infinity)
+                                                    .background(Color.black.opacity(0.55))
+                                            }
+                                        }
+                                    } else {
+                                        Image(systemName: "photo.badge.plus")
+                                            .font(.system(size: 20))
+                                            .foregroundColor(.appMutedFg)
+                                    }
+                                }
+                                .frame(width: 64, height: 64)
+                                .clipped()
+                                .cornerRadius(12)
+                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(
+                                    (mysteryItems[idx].image?.isEmpty == false) ? Color(hex: "#c4b5fd") : Color.appInput,
+                                    style: StrokeStyle(lineWidth: 1, dash: (mysteryItems[idx].image?.isEmpty == false) ? [] : [4])))
+                            }
+                            .buttonStyle(.plain)
+                            Text("点左侧上传/更换照片，抽中时会弹出；不传则暂用橱窗封面占位，之后随时可补")
+                                .font(.system(size: 12))
+                                .lineSpacing(4)
+                                .foregroundColor(.appMutedFg)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            fieldLabel("无料名称 *")
+                            AppTextField(text: $mysteryItems[idx].name, placeholder: "例如：123 吧唧")
+                                .onChange(of: mysteryItems[idx].name) { v in
+                                    if v.count > 120 { mysteryItems[idx].name = String(v.prefix(120)) }
+                                }
+                        }
+                        VStack(alignment: .leading, spacing: 6) {
+                            fieldLabel("对应的码 *")
+                            AppTextField(text: $mysteryItems[idx].code, placeholder: "抽中这款的人获得的码", monospace: true)
+                                .onChange(of: mysteryItems[idx].code) { v in
+                                    if v.count > 128 { mysteryItems[idx].code = String(v.prefix(128)) }
+                                }
+                                .disabled(mysteryLocked)
+                                .opacity(mysteryLocked ? 0.5 : 1)
+                        }
+                        VStack(alignment: .leading, spacing: 6) {
+                            fieldLabel("抽中概率（%）*")
+                            HStack(spacing: 8) {
+                                AppTextField(text: $mysteryItems[idx].percent, placeholder: "如 50", keyboard: .decimalPad)
+                                    .onChange(of: mysteryItems[idx].percent) { v in
+                                        let f = v.filter { $0.isNumber || $0 == "." }
+                                        if f != v { mysteryItems[idx].percent = f }
+                                    }
+                                    .disabled(mysteryLocked)
+                                    .opacity(mysteryLocked ? 0.5 : 1)
+                                Text("%").font(.system(size: 14)).foregroundColor(.appMutedFg)
+                            }
+                        }
+                        if mysteryLocked {
+                            Text("已发布的盲盒：码和概率已锁定（概率已公示，改动对已抽取的人不公平），可以修改名称和照片。")
+                                .font(.system(size: 12))
+                                .lineSpacing(4)
+                                .foregroundColor(Color(hex: "#6d28d9"))
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 12).padding(.vertical, 8)
+                                .background(Color(hex: "#ede9fe").opacity(0.7))
+                                .cornerRadius(8)
+                        }
+                        Button { editingItemIdx = nil } label: {
+                            Text("完成")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 40)
+                                .background(Color(hex: "#8b5cf6"))
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(20)
+                }
+                .background(Color.appBackground)
+                .navigationTitle("第 \(idx + 1) 项无料")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("完成") { editingItemIdx = nil }
+                    }
+                }
+            }
+        )
     }
 
     private func fmtTotal(_ p: Double) -> String {
@@ -748,7 +935,7 @@ struct PublishView: View {
         descriptionText = d.description ?? ""
         existingCover = d.coverImage
         shippingFree = d.shippingFree ?? false
-        // 盲盒回填：发布者可见全量 ownerMysteryItems
+        // 盲盒回填：发布者可见全量 ownerMysteryItems（含照片 URL / 占位标记）
         isMystery = d.isMystery ?? false
         if d.isMystery == true, let items = d.ownerMysteryItems, !items.isEmpty {
             mysteryItems = items.map { m in
@@ -756,6 +943,8 @@ struct PublishView: View {
                 it.name = m.name
                 it.code = m.code
                 it.percent = (m.percent == m.percent.rounded()) ? String(Int(m.percent)) : String(format: "%g", m.percent)
+                it.image = m.image
+                it.hasCustomImage = m.hasCustomImage ?? false
                 return it
             }
         }
@@ -948,7 +1137,10 @@ struct PublishView: View {
                     ToastCenter.shared.error("第 \(i + 1) 项概率请填大于 0 的数字"); return
                 }
                 if p > 100 { ToastCenter.shared.error("第 \(i + 1) 项概率不能超过 100%"); return }
-                rows.append(["name": name, "code": code, "percent": p])
+                var row: [String: Any] = ["name": name, "code": code, "percent": p]
+                // 奖项照片：仅传 base64 新图；回填的 /api/ URL 服务端视为「保持原图」，但也原样带上（服务端会忽略）
+                if let img = it.image, !img.isEmpty { row["image"] = img }
+                rows.append(row)
             }
             let total = rows.reduce(0.0) { $0 + ($1["percent"] as? Double ?? 0) }
             if Int((total * 100).rounded()) != 10000 {
@@ -1026,6 +1218,10 @@ struct MysteryItemInput: Identifiable, Equatable {
     var name = ""
     var code = ""
     var percent = ""
+    /// 奖项照片（网页 2026-10-13）：新图是 data:image/ base64；编辑回填时是 /api/mystery-item-img/:id URL（提交时视为保持原图）
+    var image: String? = nil
+    /// 库里是否已有自定义照片（false = 展示端用橱窗封面占位）
+    var hasCustomImage: Bool = false
 }
 
 // MARK: - 发布草稿（网页 publish_draft_v1；图片不入草稿，与网页超配额剔除图片一致）
