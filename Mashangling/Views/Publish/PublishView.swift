@@ -798,8 +798,9 @@ struct PublishView: View {
         var parts = [title, platform, rouzaoCode, codeVisibility, descriptionText,
                      stockStatus, claimMode, quantityText, pointCostText,
                      shippingFree ? "1" : "0", isMystery ? "1" : "0"]
-        for it in mysteryItems { parts.append("\(it.name)\(it.code)\(it.percent)") }
-        return parts.joined(separator: "")
+        for it in mysteryItems { parts.append("\(it.name)|\(it.code)|\(it.percent)") }
+        return parts.joined(separator: "
+")
     }
 
     private func scheduleDraftSave() {
