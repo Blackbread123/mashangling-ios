@@ -1449,7 +1449,7 @@ struct BookmarkedShowcase: Codable, Identifiable {
                  tags: tags, likeCount: likeCount, claimCount: claimCount,
                  codeCount: codeCount, likedByMe: likedByMe, claimedByMe: claimedByMe,
                  addressSentByMe: addressSentByMe, addressCount: addressCount,
-                 isMystery: nil)
+                 isMystery: nil, similarity: nil)
     }
 }
 
