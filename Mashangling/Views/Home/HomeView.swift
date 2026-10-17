@@ -9,6 +9,9 @@ struct HomeView: View {
     @State private var searchInput = ""
     @State private var pushSearch = false
     @State private var showAvatarMenu = false
+    // 识图搜索（网页 2026-10-17：Header 搜索框右侧相机按钮）
+    @State private var showImagePicker = false
+    @State private var imageSearchURL: String? = nil
     // 盲盒分类上线悬浮提示（网页 MysteryTabTip：对所有用户显示一次，含游客）
     @State private var mysteryTipDismissed = UserDefaults.standard.bool(forKey: "msl-mystery-tab-tip-dismissed")
     @State private var mysteryTipSessionClosed = false
@@ -83,6 +86,16 @@ struct HomeView: View {
                                 .autocapitalization(.none)
                                 .padding(.leading, 8)
                                 .onSubmit { submitSearch() }
+                            // 识图搜索相机按钮（网页 Header.tsx:118：输入框内右侧）
+                            Button { showImagePicker = true } label: {
+                                Image(systemName: "camera")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.appMutedFg)
+                                    .frame(width: 32, height: 32)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.trailing, 6)
                         }
                         .frame(height: 40)
                         .background(Color.appCard)
@@ -164,6 +177,24 @@ struct HomeView: View {
             .toolbar(.hidden, for: .navigationBar)   // 顶栏自绘，不用系统导航栏
             .navigationDestination(isPresented: $pushSearch) {
                 SearchView(initialQuery: searchInput)
+            }
+            .sheet(isPresented: $showImagePicker) {
+                ImagePicker(image: Binding(
+                    get: { nil },
+                    set: { img in
+                        guard let img = img,
+                              let url = ImageCodec.imageSearchDataURL(from: img) else { return }
+                        imageSearchURL = url
+                    }
+                ))
+            }
+            .navigationDestination(isPresented: Binding(
+                get: { imageSearchURL != nil },
+                set: { if !$0 { imageSearchURL = nil } }
+            )) {
+                if let url = imageSearchURL {
+                    ImageSearchResultView(imageDataURL: url)
+                }
             }
             .onAppear { vm.onAppear(authed: authManager.isAuthenticated) }
         }

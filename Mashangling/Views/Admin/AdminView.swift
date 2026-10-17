@@ -35,6 +35,11 @@ struct AdminView: View {
     @State private var backupBusy = false
     // 动态管理入口角标（2026-10-09，仅主管理员）
     @State private var postPending = 0
+    // 识图搜索用量（2026-10-17 网页 Admin.tsx：识图搜索用量面板）
+    @State private var imageUsage: MashanglingAPI.ImageSearchService.UsageStats? = nil
+    @State private var budgetEditing = false
+    @State private var budgetInput = ""
+    @State private var budgetBusy = false
 
     private var isAdmin: Bool { authManager.currentUser?.role == "admin" }
     private var isSuper: Bool { authManager.currentUser?.superAdmin == true }
@@ -101,6 +106,7 @@ struct AdminView: View {
 
                 // 站点统计
                 statGrid.padding(.top, 20)
+                imageUsageCard.padding(.top, 16)
                 growthCard.padding(.top, 16)
 
                 if isSuper {
@@ -278,6 +284,122 @@ struct AdminView: View {
         .padding(16).background(Color.appCard)
         .clipShape(RoundedRectangle(cornerRadius: 4))
         .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.appBorder, lineWidth: 0.5))
+    }
+
+    // MARK: 识图搜索用量（网页 2026-10-17 Admin.tsx：rounded-xl border bg-card p-4，mt-4 跟在统计卡后）
+
+    private var imageUsageCard: some View {
+        let r = imageUsage
+        let budget = r?.budget
+        let over = (budget ?? 0) > 0 && (r?.monthTokens ?? 0) > (budget ?? 0)
+        let pct: Double? = (budget ?? 0) > 0 ? min(100, Double(r?.monthTokens ?? 0) / Double(budget ?? 1) * 100) : nil
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Text("识图搜索用量")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Color.appForeground)
+                Spacer()
+                if budgetEditing {
+                    HStack(spacing: 6) {
+                        TextField("月度 token 预算", text: $budgetInput)
+                            .keyboardType(.numberPad)
+                            .font(.system(size: 12))
+                            .padding(.horizontal, 10)
+                            .frame(width: 144, height: 32)
+                            .overlay(RoundedRectangle(cornerRadius: 2).stroke(Color.appInput, lineWidth: 1))
+                        Button {
+                            Task { await saveBudget() }
+                        } label: {
+                            Text("保存")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Color.appPrimaryFg)
+                                .padding(.horizontal, 10).frame(height: 32)
+                                .background(Color.appPrimary)
+                                .clipShape(RoundedRectangle(cornerRadius: 2))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(budgetBusy)
+                        Button {
+                            budgetEditing = false
+                        } label: {
+                            Text("取消")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Color.appMutedFg)
+                                .padding(.horizontal, 8).frame(height: 32)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                } else {
+                    Button {
+                        budgetInput = budget.map { String($0) } ?? ""
+                        budgetEditing = true
+                    } label: {
+                        Text(budget != nil ? "预算 \(formatCompact(budget ?? 0))/月" : "设置预算")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.appMutedFg)
+                            .padding(.horizontal, 10).padding(.vertical, 4)
+                            .overlay(Capsule().stroke(Color.appBorder, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            // 四格数字（网页 grid-cols-2 sm:grid-cols-4）
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
+                usageCell("今日 tokens", value: r?.todayTokens, danger: false)
+                usageCell("本月 tokens", value: r?.monthTokens, danger: over)
+                usageCell("累计 tokens", value: r?.totalTokens, danger: false)
+                usageCell("搜索 / 索引次数", custom: r.map { "\(formatCompact($0.searchCount ?? 0)) / \(formatCompact($0.indexCount ?? 0))" })
+            }
+            .padding(.top, 12)
+
+            // 预算进度条
+            if let pct {
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color.appSecondary).frame(height: 8)
+                        Capsule().fill(over ? Color.fixRed500 : Color.appPrimary)
+                            .frame(width: max(0, geo.size.width * CGFloat(pct) / 100), height: 8)
+                    }
+                }
+                .frame(height: 8)
+                .padding(.top, 12)
+                Text(over
+                     ? "已超出 \(String(format: "%.1f", pct))%，请调高预算或控制使用"
+                     : "本月已用 \(String(format: "%.1f", pct))%")
+                    .font(.system(size: 11))
+                    .foregroundStyle(over ? Color.fixRed500 : Color.appMutedFg)
+                    .padding(.top, 4)
+            }
+        }
+        .padding(16)
+        .background(Color.appCard)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.appBorder, lineWidth: 0.5))
+    }
+
+    private func usageCell(_ label: String, value: Int? = nil, custom: String? = nil, danger: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label).font(.system(size: 12)).foregroundStyle(Color.appMutedFg)
+            Text(custom ?? value.map { formatCompact($0) } ?? "—")
+                .font(.system(size: 20, weight: .bold)).monospacedDigit()
+                .foregroundStyle(danger ? Color.fixRed500 : Color.appForeground)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func saveBudget() async {
+        budgetBusy = true
+        defer { budgetBusy = false }
+        let trimmed = budgetInput.trimmingCharacters(in: .whitespaces)
+        let parsed = Int(trimmed)
+        let budget: Int? = (parsed != nil && parsed! > 0) ? parsed : nil
+        do {
+            try await MashanglingAPI.shared.imageSearch.setBudget(budget)
+            ToastCenter.shared.success("预算已更新")
+            budgetEditing = false
+            imageUsage = try? await MashanglingAPI.shared.imageSearch.usageStats()
+        } catch { ToastCenter.shared.error(error.localizedDescription) }
     }
 
     // MARK: 增长趋势
@@ -653,7 +775,8 @@ struct AdminView: View {
         async let rp = try? MashanglingAPI.shared.report.list()
         async let st = try? MashanglingAPI.shared.admin.stats()
         async let hp = try? MashanglingAPI.shared.heart.poolAdmin()
-        reports = await rp; stats = await st; heartPool = await hp
+        async let iu = try? MashanglingAPI.shared.imageSearch.usageStats()
+        reports = await rp; stats = await st; heartPool = await hp; imageUsage = await iu
         await loadGrowth()
         if isSuper {
             recentUsers = (try? await MashanglingAPI.shared.admin.recentUsers()) ?? []

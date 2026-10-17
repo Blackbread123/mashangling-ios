@@ -206,6 +206,26 @@ actor MashanglingAPI {
         func search(imageDataURL: String) async throws -> SearchResult {
             try await client.post("imageSearch.search", input: ["image": imageDataURL])
         }
+
+        /// 用量统计（管理员）：今日/本月/累计 tokens、搜索与索引次数、月度预算
+        struct UsageStats: Codable {
+            let todayTokens: Int?
+            let monthTokens: Int?
+            let totalTokens: Int?
+            let searchCount: Int?
+            let indexCount: Int?
+            let budget: Int?
+        }
+
+        func usageStats() async throws -> UsageStats {
+            try await client.get("imageSearch.usageStats")
+        }
+
+        /// 设置月度 token 预算（管理员）；nil 清除预算
+        func setBudget(_ budget: Int?) async throws {
+            struct R: Codable { let ok: Bool? }
+            let _: R = try await client.post("imageSearch.setBudget", input: ["budget": budget as Any])
+        }
     }
 
     // MARK: - 补货清单（restock.*，网页 2026-10-17）

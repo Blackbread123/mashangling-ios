@@ -291,6 +291,9 @@ struct WebHeaderModifier: ViewModifier {
     @State private var searchInput = ""
     @State private var pushSearch = false
     @State private var showAvatarMenu = false
+    // 识图搜索（网页 2026-10-17：Header 搜索框右侧相机按钮，选图后直达识图结果页）
+    @State private var showImagePicker = false
+    @State private var imageSearchURL: String? = nil
 
     func body(content: Content) -> some View {
         ZStack(alignment: .topTrailing) {
@@ -365,6 +368,24 @@ struct WebHeaderModifier: ViewModifier {
         .navigationDestination(isPresented: $pushSearch) {
             SearchView(initialQuery: searchInput)
         }
+        .sheet(isPresented: $showImagePicker) {
+            ImagePicker(image: Binding(
+                get: { nil },
+                set: { img in
+                    guard let img = img,
+                          let url = ImageCodec.imageSearchDataURL(from: img) else { return }
+                    imageSearchURL = url
+                }
+            ))
+        }
+        .navigationDestination(isPresented: Binding(
+            get: { imageSearchURL != nil },
+            set: { if !$0 { imageSearchURL = nil } }
+        )) {
+            if let url = imageSearchURL {
+                ImageSearchResultView(imageDataURL: url)
+            }
+        }
     }
 
     private var searchBar: some View {
@@ -383,6 +404,16 @@ struct WebHeaderModifier: ViewModifier {
                     mobileSearch = false
                     pushSearch = true
                 }
+            // 识图搜索相机按钮（网页 Header.tsx:334：输入框内右侧）
+            Button { showImagePicker = true } label: {
+                Image(systemName: "camera")
+                    .font(.system(size: 16))
+                    .foregroundColor(.appMutedFg)
+                    .frame(width: 32, height: 32)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.trailing, 6)
         }
         .frame(height: 40)
         .background(Color.appCard)
