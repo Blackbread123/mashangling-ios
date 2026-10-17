@@ -1654,17 +1654,45 @@ struct ShowcaseDetailView: View {
             liked = d.likedByMe ?? false
             likeCount = d.likeCount ?? 0
             claimedByMe = d.claimedByMe ?? false
-            await loadReposts()
-            if authManager.isAuthenticated {
-                bookmarked = (try? await MashanglingAPI.shared.bookmark.mineFor(showcaseIds: [showcaseId]).contains(showcaseId)) ?? false
-                requested = (try? await MashanglingAPI.shared.request.mineFor(showcaseId: showcaseId)) ?? false
-                markedSoldout = (try? await MashanglingAPI.shared.soldout.mineFor(showcaseId: showcaseId)) ?? false
-                codes = try? await MashanglingAPI.shared.code.list(showcaseId: showcaseId)
-            }
-            await loadAddresses()
+            // 以下请求互不依赖，并行拉取（原来 6 个串行 await，详情页白等一圈往返）
+            async let repostsTask = fetchReposts()
+            async let bookmarkedTask = fetchBookmarked(authed: authManager.isAuthenticated)
+            async let requestedTask = fetchRequested(authed: authManager.isAuthenticated)
+            async let soldoutTask = fetchSoldout(authed: authManager.isAuthenticated)
+            async let codesTask = fetchCodes(authed: authManager.isAuthenticated)
+            async let addressesTask = fetchAddresses()
+            reposts = await repostsTask
+            bookmarked = await bookmarkedTask
+            requested = await requestedTask
+            markedSoldout = await soldoutTask
+            codes = await codesTask
+            addresses = await addressesTask
         } catch {
             detail = nil
         }
+    }
+
+    private func fetchReposts() async -> [RepostRow] {
+        (try? await MashanglingAPI.shared.repost.list(showcaseId: showcaseId)) ?? []
+    }
+    private func fetchBookmarked(authed: Bool) async -> Bool {
+        guard authed else { return false }
+        return (try? await MashanglingAPI.shared.bookmark.mineFor(showcaseIds: [showcaseId]).contains(showcaseId)) ?? false
+    }
+    private func fetchRequested(authed: Bool) async -> Bool {
+        guard authed else { return false }
+        return (try? await MashanglingAPI.shared.request.mineFor(showcaseId: showcaseId)) ?? false
+    }
+    private func fetchSoldout(authed: Bool) async -> Bool {
+        guard authed else { return false }
+        return (try? await MashanglingAPI.shared.soldout.mineFor(showcaseId: showcaseId)) ?? false
+    }
+    private func fetchCodes(authed: Bool) async -> MashanglingAPI.CodeService.CodeList? {
+        guard authed else { return nil }
+        return try? await MashanglingAPI.shared.code.list(showcaseId: showcaseId)
+    }
+    private func fetchAddresses() async -> ReceivedAddresses? {
+        try? await MashanglingAPI.shared.address.received(showcaseId: showcaseId)
     }
 
     /// 静默刷新详情（点赞/领到/想领/反馈后同步计数，对应网页 detail.refetch()）

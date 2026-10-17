@@ -46,6 +46,11 @@ struct ProfileView: View {
                     // 动态入口卡（网页 2026-10-08：emerald 渐变，ID 卡之后、数据看板之前）
                     postsEntryCard(a).padding(.top, 16)
 
+                    // 补货申请入口卡（网页 2026-10-17 RestockInbox.tsx：仅本人可见，数据统计上方）
+                    if isMe {
+                        RestockInboxEntryCard().padding(.top, 16)
+                    }
+
                     // 数据看板（仅本人可见）
                     if isMe {
                         StatsDashboardView().padding(.top, 16)

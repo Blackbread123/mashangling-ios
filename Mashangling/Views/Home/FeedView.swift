@@ -346,7 +346,7 @@ class FeedViewModel: ObservableObject {
                     claimCount: old.claimCount, codeCount: old.codeCount,
                     likedByMe: liked, claimedByMe: old.claimedByMe,
                     addressSentByMe: old.addressSentByMe, addressCount: old.addressCount,
-                    isMystery: old.isMystery
+                    isMystery: old.isMystery, similarity: old.similarity
                 )
                 items = copy
             }

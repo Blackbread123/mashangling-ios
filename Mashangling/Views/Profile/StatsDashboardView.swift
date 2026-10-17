@@ -285,6 +285,8 @@ struct StatsDashboardView: View {
     private func loadAll() async {
         loading = true
         loadFailed = nil
+        // 趋势图与看板并行拉取（原来串行，首屏要多等一个往返）
+        async let trendResult = fetchTrend(period: period)
         do {
             // 15 秒超时兜底：任何「永不返回」都会变成可见错误而不是永远空白
             stats = try await withTimeout(15) {
@@ -304,7 +306,11 @@ struct StatsDashboardView: View {
                 print("[StatsDashboard] dashboard 加载失败: \(error)")
             }
         }
-        await loadTrend()
+        trend = await trendResult
+    }
+
+    private nonisolated func fetchTrend(period: String) async -> StatsTrend? {
+        try? await MashanglingAPI.shared.stats.trend(period: period)
     }
 
     private func loadTrend() async {
@@ -533,10 +539,16 @@ struct CardStatsPanelView: View {
     }
 
     private func loadAll() async {
+        // 趋势图与看板并行拉取
+        async let trendResult = fetchTrend(period: period)
         stats = try? await withTimeout(15) {
             try await MashanglingAPI.shared.stats.dashboard()
         }
-        await loadTrend()
+        trend = await trendResult
+    }
+
+    private nonisolated func fetchTrend(period: String) async -> StatsTrend? {
+        try? await MashanglingAPI.shared.stats.trend(period: period)
     }
 
     private func loadTrend() async {

@@ -186,6 +186,57 @@ struct Tag: Codable, Identifiable, Hashable {
     var todayCount: Int?
 }
 
+/// 我的常用标签（tag.hot，网页 2026-10-17）
+struct HotTag: Codable, Identifiable, Hashable {
+    let id: Int
+    let name: String
+    let category: String?
+    let used: Int?
+}
+
+// MARK: - 补货清单（restock.*，网页 2026-10-17）
+
+struct RestockListItem: Codable, Identifiable {
+    let id: Int
+    let title: String
+    let coverImage: String?
+    let authorId: Int?
+    let authorName: String?
+    let invalid: Bool?            // 是否已失效（soldout/expired/quantity 三选一）
+    let kind: String?             // soldout=领完即止 / expired=限时到期 / quantity=限量领完
+    let requested: Bool?          // 本轮失效内我是否已申请过
+}
+
+struct RestockSection: Codable, Identifiable {
+    let initial: String           // 拼音首字母 A-Z / #
+    let items: [RestockListItem]
+    var id: String { initial }
+}
+
+struct RestockListResponse: Codable {
+    let sections: [RestockSection]
+    let total: Int?
+}
+
+struct RestockReceivedItem: Codable, Identifiable {
+    let showcaseId: Int
+    let title: String
+    let coverImage: String?
+    let count: Int                // 累计申请次数（跨轮次）
+    let latestAt: String?
+    let invalid: Bool?
+    let kind: String?
+    let stockStatus: String?
+    let quantity: Int?
+    let expiresAt: String?
+    let requesters: [String]?     // 最近 3 位申请人昵称
+    var id: Int { showcaseId }
+}
+
+struct RestockReceivedResponse: Codable {
+    let items: [RestockReceivedItem]
+}
+
 // MARK: - 橱窗卡片（feed item，对应 assembleFeedItems 返回）
 
 struct Showcase: Codable, Identifiable {
@@ -212,6 +263,8 @@ struct Showcase: Codable, Identifiable {
     let addressCount: Int?
     /// 盲盒橱窗：true 时卡片显示紫色「盲盒」胶囊
     let isMystery: Bool?
+    /// 识图搜索结果：相似度百分比 0-100（imageSearch.search 返回，网页 2026-10-17）
+    let similarity: Int?
 
     var authorName: String? { author?.name }
 
@@ -1871,12 +1924,39 @@ struct Post: Codable, Identifiable {
     let showcase: PostShowcaseSnapshot?   // 2026-10-09：发布橱窗自动发动态的橱窗快照，普通动态为 null
 }
 
-/// 动态联动的橱窗快照（2026-10-09 post-router：active=false 表示已下架/删除，不可点击）
+/// 动态联动的橱窗快照（2026-10-09 post-router：active=false 表示已下架/删除，不可点击；
+/// 2026-10-17 文档字段名为 coverImage/visible，兼容两套 key）
 struct PostShowcaseSnapshot: Codable {
     let id: Int
     let title: String?
     let coverUrl: String?     // /api/cover/:id?v= 相对路径，走 SiteConfig.absoluteURL
     let active: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, coverUrl, active, coverImage, visible
+    }
+
+    init(id: Int, title: String?, coverUrl: String?, active: Bool?) {
+        self.id = id; self.title = title; self.coverUrl = coverUrl; self.active = active
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(Int.self, forKey: .id)
+        title = try c.decodeIfPresent(String.self, forKey: .title)
+        coverUrl = try c.decodeIfPresent(String.self, forKey: .coverUrl)
+            ?? c.decodeIfPresent(String.self, forKey: .coverImage)
+        active = try c.decodeIfPresent(Bool.self, forKey: .active)
+            ?? c.decodeIfPresent(Bool.self, forKey: .visible)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encodeIfPresent(title, forKey: .title)
+        try c.encodeIfPresent(coverUrl, forKey: .coverUrl)
+        try c.encodeIfPresent(active, forKey: .active)
+    }
 }
 
 struct PostFeedResponse: Codable {

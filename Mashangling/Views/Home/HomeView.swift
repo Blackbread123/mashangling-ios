@@ -252,20 +252,51 @@ struct HomeView: View {
     }
 
     // 心选橱窗 / 我的农场（网页：grid-cols-2 gap-3，rounded-2xl border px-3 py-2.5）
+    // 下方整行：补货清单入口（网页 2026-10-17 Home.tsx：mt-3 flex gap-2.5）
     private var entryCards: some View {
-        HStack(spacing: 12) {
-            NavigationLink(destination: HeartShowcaseView()) {
-                entryCard(icon: "diamond.fill", title: "心选橱窗", badge: nil)
-            }
-            .buttonStyle(.plain)
+        VStack(spacing: 12) {
+            HStack(spacing: 12) {
+                NavigationLink(destination: HeartShowcaseView()) {
+                    entryCard(icon: "diamond.fill", title: "心选橱窗", badge: nil)
+                }
+                .buttonStyle(.plain)
 
-            NavigationLink(destination: ProfileView(userId: authManager.currentUser?.id ?? 0)) {
-                entryCard(icon: "leaf.fill", title: "我的农场",
-                          badge: vm.farmRate.map { String(format: "%.2f%%", ($0.dailyRate ?? 0) * 100) })
+                NavigationLink(destination: ProfileView(userId: authManager.currentUser?.id ?? 0)) {
+                    entryCard(icon: "leaf.fill", title: "我的农场",
+                              badge: vm.farmRate.map { String(format: "%.2f%%", ($0.dailyRate ?? 0) * 100) })
+                }
+                .buttonStyle(.plain)
+                .disabled(!authManager.isAuthenticated)
+                .opacity(authManager.isAuthenticated ? 1 : 0.6)
+            }
+
+            // 补货清单（未登录点它去登录页，与网页一致）
+            NavigationLink(destination: authManager.isAuthenticated
+                           ? AnyView(RestockListView())
+                           : AnyView(LoginView())) {
+                HStack(spacing: 10) {
+                    Image(systemName: "list.clipboard.fill")
+                        .font(.system(size: 16))
+                        .foregroundColor(.appPrimaryFg)
+                        .frame(width: 32, height: 32)
+                        .background(Color.appPrimary)
+                        .cornerRadius(3)
+                    Text("补货清单")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.appForeground)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    Text("想要补货的橱窗，勾选后一键告诉发布人")
+                        .font(.system(size: 12))
+                        .foregroundColor(.appMutedFg)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 12).padding(.vertical, 10)
+                .background(Color.appCard)
+                .cornerRadius(5)
+                .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.appBorder, lineWidth: 0.5))
             }
             .buttonStyle(.plain)
-            .disabled(!authManager.isAuthenticated)
-            .opacity(authManager.isAuthenticated ? 1 : 0.6)
         }
     }
 
@@ -321,6 +352,7 @@ struct AvatarMenuPanel: View {
         case profile, editModules, messages, claims, bookmarks, history, comments
         case points, pointRecords, shop, cards, cardPlaza, settings
         case myShipments, shipping, admin, adminTags, logout
+        case restockList, restockInbox
     }
 
     var body: some View {
@@ -330,6 +362,8 @@ struct AvatarMenuPanel: View {
             Row(icon: "slider.horizontal.3", label: "编辑主页模块", dest: .editModules),
             Row(icon: "envelope", label: "消息", badge: unreadManager.totalUnread, dest: .messages),
             Row(icon: "checklist", label: "领取申请", dest: .claims),
+            Row(icon: "list.clipboard", label: "补货申请", dest: .restockInbox),
+            Row(icon: "list.bullet.clipboard", label: "补货清单", dest: .restockList),
             Row(icon: "bookmark", label: "我的清单", dest: .bookmarks),
             Row(icon: "clock.arrow.circlepath", label: "浏览记录", dest: .history),
             Row(icon: "text.bubble", label: "我的评论", dest: .comments),
@@ -437,6 +471,8 @@ struct AvatarMenuPanel: View {
         case .shipping:     ShippingView()
         case .admin:        AdminView()
         case .adminTags:    AdminTagsView()
+        case .restockList:  RestockListView()
+        case .restockInbox: RestockInboxView()
         default:            EmptyView()
         }
     }
@@ -519,8 +555,11 @@ class HomeViewModel: ObservableObject {
     }
 
     func refresh(authed: Bool) async {
-        do {
-            let rows = try await MashanglingAPI.shared.points.ticker()
+        // 并行拉取播报条与农场费率（两者互不依赖，串行会白白多等一个往返）
+        async let tick = fetchTicker()
+        async let rate = fetchFarmRateIf(authed: authed)
+
+        if let rows = await tick {
             ticker = rows
             if rows.count >= 2 {
                 tickerTimer?.invalidate()
@@ -528,10 +567,19 @@ class HomeViewModel: ObservableObject {
                     Task { @MainActor in self?.stepTicker() }
                 }
             }
-        } catch {}
-        if authed {
-            farmRate = try? await MashanglingAPI.shared.farm.myRate()
         }
+        if authed {
+            farmRate = await rate
+        }
+    }
+
+    private nonisolated func fetchTicker() async -> [PointsTickerRow]? {
+        try? await MashanglingAPI.shared.points.ticker()
+    }
+
+    private nonisolated func fetchFarmRateIf(authed: Bool) async -> FarmRate? {
+        guard authed else { return nil }
+        return try? await MashanglingAPI.shared.farm.myRate()
     }
 
     private func stepTicker() {
@@ -1015,26 +1063,54 @@ struct HomeModulesView: View {
     private func loadBadgesAndRecords() async {
         let sel = Set(selected)
         let needBadges = sel.contains("messages") || sel.contains("shipping") || sel.contains("myShipments")
+        // 全部并行拉取（原来 5 个串行 await，首页每次出现都要排队等 5 个往返）
+        async let unread = fetchUnreadCountIf(needBadges)
+        async let badges = fetchNavBadgesIf(needBadges)
+        async let msgs = fetchLatestMessagesIf(sel.contains("messages"))
+        async let claims = fetchLatestClaimsIf(sel.contains("claims"))
+        async let board = fetchShippingBoardIf(sel.contains("shipping"))
+
         if needBadges {
-            unreadCount = (try? await MashanglingAPI.shared.message.unreadCount()) ?? 0
-            let b = try? await MashanglingAPI.shared.address.navBadges()
+            unreadCount = await unread ?? 0
+            let b = await badges
             approvalCount = b?.approvalCount ?? 0
             pendingFeeCount = b?.pendingFeeCount ?? 0
         }
         if sel.contains("messages") {
-            latestMessages = Array(((try? await MashanglingAPI.shared.message.list(type: "all")) ?? []).prefix(2))
+            latestMessages = Array((await msgs ?? []).prefix(2))
         }
         if sel.contains("claims") {
-            latestClaims = Array(((try? await MashanglingAPI.shared.claim.received()) ?? []).prefix(2))
+            latestClaims = Array((await claims ?? []).prefix(2))
         }
         if sel.contains("shipping") {
-            if let board = try? await MashanglingAPI.shared.address.shippingBoard() {
-                latestShipments = Array(board.groups
+            if let b = await board {
+                latestShipments = Array(b.groups
                     .flatMap { g in g.items.map { (item: $0, title: g.title) } }
                     .sorted { (DateFmt.parse($0.item.createdAt) ?? .distantPast) > (DateFmt.parse($1.item.createdAt) ?? .distantPast) }
                     .prefix(2))
             }
         }
+    }
+
+    private func fetchUnreadCountIf(_ on: Bool) async -> Int? {
+        guard on else { return nil }
+        return try? await MashanglingAPI.shared.message.unreadCount()
+    }
+    private func fetchNavBadgesIf(_ on: Bool) async -> NavBadges? {
+        guard on else { return nil }
+        return try? await MashanglingAPI.shared.address.navBadges()
+    }
+    private func fetchLatestMessagesIf(_ on: Bool) async -> [MessageRow]? {
+        guard on else { return nil }
+        return try? await MashanglingAPI.shared.message.list(type: "all")
+    }
+    private func fetchLatestClaimsIf(_ on: Bool) async -> [ClaimRow]? {
+        guard on else { return nil }
+        return try? await MashanglingAPI.shared.claim.received()
+    }
+    private func fetchShippingBoardIf(_ on: Bool) async -> ShippingBoard? {
+        guard on else { return nil }
+        return try? await MashanglingAPI.shared.address.shippingBoard()
     }
 
     private func save() {

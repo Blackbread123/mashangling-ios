@@ -49,6 +49,7 @@ struct MessagesView: View {
         case "follow": return "star"
         case "address": return "mappin"
         case "gift": return "gift"
+        case "restockRequest": return "list.clipboard"   // 2026-10-17：补货申请站内信
         case "postComment": return "message"
         default: return "tray"
         }
@@ -65,6 +66,7 @@ struct MessagesView: View {
         case shippingApprovals
         case approval(Int)
         case dm(Int, String)
+        case restockInbox
         var id: String {
             switch self {
             case .showcase(let i): return "s\(i)"
@@ -74,6 +76,7 @@ struct MessagesView: View {
             case .shippingApprovals: return "sa"
             case .approval(let i): return "ap\(i)"
             case .dm(let i, _): return "dm\(i)"
+            case .restockInbox: return "ri"
             }
         }
     }
@@ -157,6 +160,7 @@ struct MessagesView: View {
                     case .shippingApprovals: ShippingApprovalsView()
                     case .approval(let aid): ApprovalDetailView(approvalId: aid)
                     case .dm(let pid, let name): DmThreadView(peerId: pid, peerName: name)
+                    case .restockInbox: RestockInboxView()
                     }
                 }
             }
@@ -620,6 +624,9 @@ struct MessagesView: View {
             route = .dm(from, m.fromUserName ?? "")
         } else if m.type == "claim_received" {
             route = .claims
+        } else if m.type == "restockRequest" {
+            // 2026-10-17：补货申请站内信 → 发布人「补货申请」收件箱（消息文案指向这里）
+            route = .restockInbox
         } else if m.type == "address", let sid = m.showcaseId {
             route = .showcase(sid)
         } else if let sid = m.showcaseId {

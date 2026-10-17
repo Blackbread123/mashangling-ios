@@ -12,6 +12,9 @@ struct SearchView: View {
     @State private var codeMatch: CardCodeMatch? = nil
     @State private var importing = false
     @State private var showLogin = false
+    // 识图搜索（网页 2026-10-17：搜索框右侧相机按钮）
+    @State private var showImagePicker = false
+    @State private var imageSearchURL: String? = nil
 
     @EnvironmentObject var authManager: AuthManager
 
@@ -28,6 +31,15 @@ struct SearchView: View {
                         .autocapitalization(.none)
                         .disableAutocorrection(true)
                         .onSubmit { submit() }
+                    // 识图搜索相机按钮（网页 SearchPage.tsx：输入框右侧 absolute right-3）
+                    Button { showImagePicker = true } label: {
+                        Image(systemName: "camera")
+                            .font(.system(size: 16))
+                            .foregroundColor(.appMutedFg)
+                            .frame(width: 32, height: 32)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                 }
                 .padding(.leading, 14)
                 .padding(.trailing, 16)
@@ -233,6 +245,25 @@ struct SearchView: View {
         .navigationTitle("搜索")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showLogin) { LoginView() }
+        .sheet(isPresented: $showImagePicker) {
+            ImagePicker(image: Binding(
+                get: { nil },
+                set: { img in
+                    guard let img = img,
+                          let url = ImageCodec.imageSearchDataURL(from: img) else { return }
+                    guard authManager.isAuthenticated else { showLogin = true; return }
+                    imageSearchURL = url
+                }
+            ))
+        }
+        .navigationDestination(isPresented: Binding(
+            get: { imageSearchURL != nil },
+            set: { if !$0 { imageSearchURL = nil } }
+        )) {
+            if let url = imageSearchURL {
+                ImageSearchResultView(imageDataURL: url)
+            }
+        }
         .onAppear {
             if q.isEmpty && !initialQuery.isEmpty {
                 input = initialQuery

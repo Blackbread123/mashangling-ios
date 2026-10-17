@@ -20,6 +20,7 @@ struct PublishView: View {
     @State private var selectedTags: [Tag] = []
     @State private var tagQuery = ""
     @State private var tagResults: [Tag] = []
+    @State private var hotTags: [HotTag] = []   // 我的常用标签（网页 2026-10-17 tag.hot，搜索框为空时展示）
     @State private var newTagCategory = "work"
     @State private var stockStatus = "none"
     @State private var claimMode = "request"
@@ -388,6 +389,8 @@ struct PublishView: View {
         .onAppear {
             prefill()
             checkDraft()
+            // 我的常用标签（tag.hot，需登录；未登录/无发布记录返回空数组）
+            Task { hotTags = (try? await MashanglingAPI.shared.tag.hot(limit: 5)) ?? [] }
         }
         // 草稿：内容变化后 800ms 防抖自动保存（仅新建模式）
         .onChange(of: draftFingerprint) { _ in scheduleDraftSave() }
@@ -457,6 +460,42 @@ struct PublishView: View {
             AppTextField(text: $tagQuery, placeholder: "搜索已有标签，或输入新标签名…")
                 .onChange(of: tagQuery) { _ in Task { await searchTags() } }
                 .onSubmit { Task { await searchTags() } }
+
+            // 我的常用标签（网页 TagPicker.tsx：搜索框为空且有常用标签时展示，rounded-lg border bg-card p-2）
+            let hotCandidates = hotTags.filter { h in !selectedTags.contains { $0.id == h.id } }
+            if tagQuery.trimmingCharacters(in: .whitespaces).isEmpty && !hotCandidates.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("我的常用标签")
+                        .font(.system(size: 11))
+                        .foregroundColor(.appMutedFg)
+                    FlowLayout(spacing: 6) {
+                        ForEach(hotCandidates) { h in
+                            Button {
+                                guard selectedTags.count < tagMax else { return }
+                                selectedTags.append(Tag(id: h.id, name: h.name, category: h.category))
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Text(h.name).foregroundColor(.appSecondaryFg)
+                                    Text("·\(TagCategory.label(h.category))")
+                                        .foregroundColor(.appMutedFg)
+                                }
+                                .font(.system(size: 12))
+                                .padding(.horizontal, 10).padding(.vertical, 4)
+                                .background(Color.appSecondary)
+                                .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(selectedTags.count >= tagMax)
+                            .opacity(selectedTags.count >= tagMax ? 0.5 : 1)
+                        }
+                    }
+                }
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.appCard)
+                .cornerRadius(3)
+                .overlay(RoundedRectangle(cornerRadius: 3).stroke(Color.appBorder, lineWidth: 1))
+            }
 
             if !tagQuery.trimmingCharacters(in: .whitespaces).isEmpty {
                 VStack(alignment: .leading, spacing: 0) {

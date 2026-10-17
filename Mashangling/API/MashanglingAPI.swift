@@ -186,6 +186,51 @@ actor MashanglingAPI {
         func trendingToday() async throws -> [Tag] {
             try await client.get("tag.trendingToday")
         }
+
+        /// 我的常用标签（网页 2026-10-17：按我发布的橱窗使用次数降序，发布页标签选择器顶部）
+        func hot(limit: Int = 5) async throws -> [HotTag] {
+            try await client.get("tag.hot", input: ["limit": limit])
+        }
+    }
+
+    // MARK: - 识图搜索（imageSearch.*，网页 2026-10-17）
+    struct ImageSearchService {
+        let client: APIClient
+
+        struct SearchResult: Codable {
+            let items: [Showcase]      // 结构与 showcase.feed 的 FeedItem 一致，多 similarity 字段
+            let indexed: Int?
+        }
+
+        /// 拍图找橱窗：image 为 ≤3.5MB 的 data:image/* base64（客户端压到长边 1200px JPEG 0.85）
+        func search(imageDataURL: String) async throws -> SearchResult {
+            try await client.post("imageSearch.search", input: ["image": imageDataURL])
+        }
+    }
+
+    // MARK: - 补货清单（restock.*，网页 2026-10-17）
+    struct RestockService {
+        let client: APIClient
+
+        /// 补货清单：全部非盲盒橱窗按拼音首字母分组
+        func list(scope: String = "all", kind: String? = nil, keyword: String = "") async throws -> RestockListResponse {
+            var input: [String: Any] = ["scope": scope]
+            if let kind = kind { input["kind"] = kind }
+            if !keyword.isEmpty { input["keyword"] = keyword }
+            return try await client.get("restock.list", input: input)
+        }
+
+        /// 批量提交补货申请（1-30 个；自动去重；成功给发布人发站内信 restockRequest）
+        func submit(showcaseIds: [Int]) async throws -> (requested: Int, skipped: Int) {
+            struct R: Codable { let requested: Int?; let skipped: Int? }
+            let r: R = try await client.post("restock.submit", input: ["showcaseIds": showcaseIds])
+            return (r.requested ?? 0, r.skipped ?? 0)
+        }
+
+        /// 我发布的橱窗收到的补货申请（发布人视角，按申请人数降序）
+        func received(scope: String = "invalid") async throws -> RestockReceivedResponse {
+            try await client.get("restock.received", input: ["scope": scope])
+        }
     }
 
     // MARK: - 标签管理（tagAdmin.*，管理员）
@@ -1498,6 +1543,8 @@ actor MashanglingAPI {
     var cardPlaza:   CardPlazaService   { CardPlazaService(client: client) }
     var address:     AddressService     { AddressService(client: client) }
     var admin:       AdminService       { AdminService(client: client) }
+    var imageSearch: ImageSearchService { ImageSearchService(client: client) }
+    var restock:     RestockService     { RestockService(client: client) }
 }
 
 // MARK: - CardConfig 编码辅助

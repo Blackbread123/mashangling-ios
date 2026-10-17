@@ -25,6 +25,13 @@ enum ImageCodec {
         return "data:image/png;base64," + data.base64EncodedString()
     }
 
+    /// 识图搜索（网页 2026-10-17 compressForImageSearch）：最长边 1200px，JPEG 0.85
+    static func imageSearchDataURL(from image: UIImage) -> String? {
+        let resized = resize(image, maxSide: 1200)
+        guard let data = resized.jpegData(compressionQuality: 0.85) else { return nil }
+        return "data:image/jpeg;base64," + data.base64EncodedString()
+    }
+
     /// 等比缩放到最长边不超过 maxSide
     static func resize(_ image: UIImage, maxSide: CGFloat) -> UIImage {
         let size = image.size
