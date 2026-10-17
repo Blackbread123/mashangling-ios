@@ -100,6 +100,27 @@ struct RestockListView: View {
                                 .buttonStyle(.plain)
                             }
                         }
+                        // 网页：ml-auto 清空 + 确定 (n)，就在筛选行右侧
+                        if !selected.isEmpty {
+                            Spacer(minLength: 0)
+                            Button { selected.removeAll() } label: {
+                                Text("清空")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.appMutedFg)
+                            }
+                            .buttonStyle(.plain)
+                            Button { Task { await submit() } } label: {
+                                Text(submitting ? "提交中…" : "确定 (\(selected.count))")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(.appPrimaryFg)
+                                    .padding(.horizontal, 16).padding(.vertical, 6)
+                                    .background(Color.appPrimary)
+                                    .clipShape(Capsule())
+                                    .opacity(submitting ? 0.6 : 1)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(submitting)
+                        }
                     }
                     .padding(.top, 8)
 
@@ -148,7 +169,7 @@ struct RestockListView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 24)
-                .padding(.bottom, selected.isEmpty ? 24 : 88) // 底部确定栏避让
+                .padding(.bottom, 24)
             }
             .refreshable { await load() }
         }
@@ -156,33 +177,6 @@ struct RestockListView: View {
         .navigationTitle("补货清单")
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
-        // 底部确定栏（网页在 sticky 筛选行右侧；App 里筛选行窄，放底部悬浮条）
-        .safeAreaInset(edge: .bottom) {
-            if !selected.isEmpty {
-                HStack(spacing: 12) {
-                    Button { selected.removeAll() } label: {
-                        Text("清空")
-                            .font(.system(size: 12))
-                            .foregroundColor(.appMutedFg)
-                    }
-                    .buttonStyle(.plain)
-                    Spacer()
-                    Button { Task { await submit() } } label: {
-                        Text(submitting ? "提交中…" : "确定 (\(selected.count))")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(.appPrimaryFg)
-                            .padding(.horizontal, 16).padding(.vertical, 6)
-                            .background(Color.appPrimary)
-                            .clipShape(Capsule())
-                            .opacity(submitting ? 0.6 : 1)
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(submitting)
-                }
-                .padding(.horizontal, 16).padding(.vertical, 10)
-                .background(Color.appBackground.opacity(0.95))
-            }
-        }
     }
 
     // 行：勾选圈 + 封面 48 + 标题/发布人 + 状态胶囊 + 本轮已申请
